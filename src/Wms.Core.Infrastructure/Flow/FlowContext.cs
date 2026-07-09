@@ -62,6 +62,11 @@ public class FlowContext
     public string? Phase { get; set; }
 
     /// <summary>
+    /// 流程分类（入库/出库/移库/质检/盘点），由 FlowTemplate.Category 传入
+    /// </summary>
+    public string? FlowCategory { get; set; }
+
+    /// <summary>
     /// 任务是否被取消/拒绝（完成阶段：cancelled/refused 时为 true）
     /// </summary>
     public bool IsCancelled { get; set; }

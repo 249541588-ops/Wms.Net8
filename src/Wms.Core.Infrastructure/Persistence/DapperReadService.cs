@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Domain.Entities.Material;
 using Wms.Core.Domain.Entities.Warehouse;
-using Wms.Core.Domain.Interfaces;
+using Wms.Core.Application.Ports;
 
 namespace Wms.Core.Infrastructure.Persistence;
 

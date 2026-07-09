@@ -62,7 +62,7 @@ public class CheckUnitloadStatusHandler : INodeHandler
             {
                 // 入库时：如果在货架位则不能入库
                 if (currentLocation.LocationType == Location_Enum.LocationType.R.ToString()
-                    && context.StartLocation?.RequestType == Cst.入库)
+                    && (context.FlowCategory == Cst.入库 || context.FlowCategory == Cst.入库双叉))
                 {
                     return NodeResult.WcsFail(
                         $"托盘 {containerCode} 当前在货架位 {currentLocation.LocationCode}，无法入库",
@@ -70,7 +70,7 @@ public class CheckUnitloadStatusHandler : INodeHandler
                 }
 
                 // 移库时：检查当前位置是否禁止出库
-                if (context.StartLocation?.RequestType == Cst.移库 && currentLocation.OutboundDisabled)
+                if (context.FlowCategory == Cst.移库 && currentLocation.OutboundDisabled)
                 {
                     return NodeResult.WcsFail(
                         $"托盘 {containerCode} 当前位置 {currentLocation.LocationCode} 已禁止出库",
@@ -80,7 +80,7 @@ public class CheckUnitloadStatusHandler : INodeHandler
         }
 
         // 入库时检查是否有正在执行的 WCS 任务
-        if (context.StartLocation != null && context.StartLocation.RequestType == Cst.入库)
+        if (context.FlowCategory == Cst.入库 || context.FlowCategory == Cst.入库双叉)
         {
             var existingTask = await context.Db.TransTasks
                 .AnyAsync(t => t.UnitloadId == unitload.UnitloadId
@@ -92,8 +92,8 @@ public class CheckUnitloadStatusHandler : INodeHandler
             }
         }
 
-        // 入库时：验证所有容器码对应的 Unitload 状态
-        if (context.StartLocation?.RequestType == Cst.入库)
+        // 入库时：验证所有容器码对应的 Unitload 状态（仅标准入库单次执行；入库双叉走循环，各自迭代验证）
+        if (context.FlowCategory == Cst.入库)
         {
             var validated = context.Data.GetValueOrDefault("ValidatedUnitloads") as Dictionary<string, Unitload>;
             if (validated != null)

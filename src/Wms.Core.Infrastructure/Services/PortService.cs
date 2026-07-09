@@ -3,7 +3,7 @@ using Wms.Core.Domain.Entities;
 using Wms.Core.Domain.Enums;
 using Wms.Core.Domain.Extensions;
 using Wms.Core.Domain.Repositories;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 using Wms.Core.Domain.Common;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
@@ -147,7 +147,7 @@ public class PortService : IPortService
         {
             transaction.Rollback();
             _logger.LogError(ex, "创建/更新端口失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 }

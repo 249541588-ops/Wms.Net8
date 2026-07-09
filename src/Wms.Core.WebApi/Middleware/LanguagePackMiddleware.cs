@@ -131,7 +131,7 @@ public class LanguagePackMiddleware
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取语言包失败: {Message}", ex.Message);
-            await WriteErrorResponse(context, $"获取语言包失败: {ex.Message}");
+            await WriteErrorResponse(context, "获取语言包失败");
         }
     }
 

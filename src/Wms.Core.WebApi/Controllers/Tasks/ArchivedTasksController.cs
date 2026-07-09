@@ -45,12 +45,25 @@ public class ArchivedTasksController : ControllerBase
     /// </summary>
     /// <param name="keyword">搜索关键字（搜 TaskCode）</param>
     /// <param name="taskType">任务类型筛选（入库/出库/移库）</param>
+    /// <param name="containerCode">托盘码（模糊匹配 UnitloadCode 快照）</param>
+    /// <param name="startLocationCode">起始库位编码（模糊匹配 FromLocationCode 快照）</param>
+    /// <param name="endLocationCode">目标库位编码（模糊匹配 ToLocationCode 快照）</param>
+    /// <param name="ext1">拓展码1（模糊匹配 Ext1 快照）</param>
     /// <param name="cancelled">是否取消筛选</param>
     /// <param name="pageNumber">页码（默认 1）</param>
     /// <param name="pageSize">每页大小（默认 20，最大 100）</param>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public Result GetAll(string? keyword = null, string? taskType = null, bool? cancelled = null, int pageNumber = 1, int pageSize = 20)
+    public Result GetAll(
+        string? keyword = null,
+        string? taskType = null,
+        string? containerCode = null,
+        string? startLocationCode = null,
+        string? endLocationCode = null,
+        string? ext1 = null,
+        bool? cancelled = null,
+        int pageNumber = 1,
+        int pageSize = 20)
     {
         try
         {
@@ -66,6 +79,30 @@ public class ArchivedTasksController : ControllerBase
             if (!string.IsNullOrEmpty(taskType))
             {
                 query = query.Where(t => t.TaskType == taskType);
+            }
+
+            // 托盘码：模糊匹配 UnitloadCode 快照
+            if (!string.IsNullOrEmpty(containerCode))
+            {
+                query = query.Where(t => t.UnitloadCode != null && t.UnitloadCode.Contains(containerCode));
+            }
+
+            // 起始库位：模糊匹配 FromLocationCode 快照
+            if (!string.IsNullOrEmpty(startLocationCode))
+            {
+                query = query.Where(t => t.FromLocationCode != null && t.FromLocationCode.Contains(startLocationCode));
+            }
+
+            // 目标库位：模糊匹配 ToLocationCode 快照
+            if (!string.IsNullOrEmpty(endLocationCode))
+            {
+                query = query.Where(t => t.ToLocationCode != null && t.ToLocationCode.Contains(endLocationCode));
+            }
+
+            // 拓展码1
+            if (!string.IsNullOrEmpty(ext1))
+            {
+                query = query.Where(t => t.Ext1 != null && t.Ext1.Contains(ext1));
             }
 
             if (cancelled.HasValue)
@@ -94,6 +131,7 @@ public class ArchivedTasksController : ControllerBase
                     t.OrderCode,
                     t.WareHouse,
                     t.LocationGroup,
+                    t.Ext1,
                     t.Status,
                     t.Cancelled,
                     t.Comment,
@@ -115,7 +153,7 @@ public class ArchivedTasksController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取历史任务列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -141,7 +179,7 @@ public class ArchivedTasksController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取历史任务详情失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 }

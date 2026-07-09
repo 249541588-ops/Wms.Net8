@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.SignalR;
+using Wms.Core.Domain.Exceptions;
+using Wms.Core.WebApi.Hubs;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using Wms.Core.WebApi.Filters;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
@@ -11,7 +15,7 @@ using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Domain.Entities.Transport;
 using Wms.Core.Domain.Entities.Warehouse;
 using Wms.Core.Domain.Repositories;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 using Wms.Core.Domain.Utilities.Response;
 using Wms.Core.Engine;
 using Wms.Core.Infrastructure.Persistence;
@@ -30,6 +34,7 @@ namespace Wms.Core.WebApi.Controllers.Api;
 [Route("api/v{version:apiVersion}/[controller]")]
 [Produces("application/json")]
 [AllowAnonymous]
+[InternalIpWhitelist]
 public partial class WcsController : ControllerBase
 {
     private readonly ILocationService _locationService;
@@ -40,6 +45,8 @@ public partial class WcsController : ControllerBase
     private readonly WcsTaskSyncService? _wcsTaskSyncService;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IFlowEngine _flowEngine;
+    private readonly IBackgroundTaskQueue _taskQueue;
+    private readonly IHubContext<WmsHub> _hub;
     private static readonly ConcurrentDictionary<string, DateTime> _recentRequests = new();
 
     /// <summary>
@@ -53,6 +60,8 @@ public partial class WcsController : ControllerBase
         ILogger<WcsController> logger,
         IServiceScopeFactory scopeFactory,
         IFlowEngine flowEngine,
+        IBackgroundTaskQueue taskQueue,
+        IHubContext<WmsHub> hub,
         WcsTaskSyncService? wcsTaskSyncService = null)
     {
         _locationService = locationService ?? throw new ArgumentNullException(nameof(locationService));
@@ -62,6 +71,8 @@ public partial class WcsController : ControllerBase
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _flowEngine = flowEngine ?? throw new ArgumentNullException(nameof(flowEngine));
+        _taskQueue = taskQueue ?? throw new ArgumentNullException(nameof(taskQueue));
+        _hub = hub ?? throw new ArgumentNullException(nameof(hub));
         _wcsTaskSyncService = wcsTaskSyncService;
     }
 
@@ -88,7 +99,7 @@ public partial class WcsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "创建失败: {Message}", ex.Message);
-            return ApiResultHelper.WcsFail($"{ex.Message}", ResultCodeTypes.程序异常, -1);
+            return ApiResultHelper.WcsFail("服务器内部错误", ResultCodeTypes.程序异常, -1);
         }
     }
 
@@ -106,17 +117,21 @@ public partial class WcsController : ControllerBase
 
         if (requestInfo == null)
         {
-            throw new Exception("请求数据不能空");
+            throw new InvalidRequestException("请求数据不能空");
         }
         if (string.IsNullOrWhiteSpace(requestInfo.LocationCode))
         {
-            throw new Exception("请求位置不能空！");
+            throw new InvalidRequestException("请求位置不能空！");
         }
 
         string containerCode = "";
         if (requestInfo.ContainerCode != null && requestInfo.ContainerCode.Length > 0)
         {
             containerCode = string.Join(",", requestInfo.ContainerCode);
+        }
+        else
+        {
+            throw new InvalidRequestException("请求条码不能空！");
         }
 
         // WCS 接口日志记录
@@ -153,7 +168,7 @@ public partial class WcsController : ControllerBase
             Location loc = _locationService.GetLocation(requestInfo.LocationCode);
             if (loc == null)
             {
-                throw new Exception($"#{requestInfo.LocationCode} {HttpContext.Translate("不存在")}！");
+                throw new InvalidRequestException($"#{requestInfo.LocationCode} {HttpContext.Translate("不存在")}！");
             }
 
             // 优先：流程引擎（条件匹配模板）
@@ -192,10 +207,96 @@ public partial class WcsController : ControllerBase
                         log.Success = false;
                         log.DurationMs = stopwatch.ElapsedMilliseconds;
                         log.Comment = lastFlowResult.msg;
-                        _ = Task.Run(() => SaveInterfaceLogAsync(log));
+                        _ = _taskQueue.QueueAsync(_ => SaveInterfaceLogAsync(log));
                         return lastFlowResult;
                     }
                     // 成功：fall through 到下方统一成功处理
+                }
+                else if (requestType == Cst.叠盘)
+                {
+                    // ====== 叠盘：不循环，单次执行（所有容器码一起处理）======
+                    var flowContext = new FlowContext(flowDb)
+                    {
+                        Phase = Cst.PhaseRequest,
+                        WcsRequest = requestInfo,
+                        StartLocation = trackedLoc,
+                        CurrentContainerCode = requestInfo.ContainerCode?.FirstOrDefault(cc => !string.IsNullOrWhiteSpace(cc)),
+                        BusinessType = "WcsRequest",
+                        BusinessId = requestInfo.LocationCode
+                    };
+                    lastFlowResult = await _flowEngine.ExecuteAsync(template, flowContext);
+
+                    // 失败：记录日志并返回
+                    if (lastFlowResult.resultcode != ResultCodeTypes.一)
+                    {
+                        stopwatch.Stop();
+                        log.ResponseBody = Truncate(JsonConvert.SerializeObject(lastFlowResult), 8000);
+                        log.Success = false;
+                        log.DurationMs = stopwatch.ElapsedMilliseconds;
+                        log.Comment = lastFlowResult.msg;
+                        _ = _taskQueue.QueueAsync(_ => SaveInterfaceLogAsync(log));
+                        return lastFlowResult;
+                    }
+                    // 成功：fall through 到下方统一成功处理
+                }
+                else if (requestType == Cst.排废)
+                {
+                    // ====== 排废验证：单次执行，所有容器码一起处理 ======
+                    var flowContext = new FlowContext(flowDb)
+                    {
+                        Phase = Cst.PhaseRequest,
+                        WcsRequest = requestInfo,
+                        StartLocation = trackedLoc,
+                        BusinessType = "WcsRequest",
+                        BusinessId = requestInfo.LocationCode
+                    };
+                    lastFlowResult = await _flowEngine.ExecuteAsync(template, flowContext);
+
+                    // 失败：记录日志并返回
+                    if (lastFlowResult.resultcode != ResultCodeTypes.一)
+                    {
+                        stopwatch.Stop();
+                        log.ResponseBody = Truncate(JsonConvert.SerializeObject(lastFlowResult), 8000);
+                        log.Success = false;
+                        log.DurationMs = stopwatch.ElapsedMilliseconds;
+                        log.Comment = lastFlowResult.msg;
+                        _ = _taskQueue.QueueAsync(_ => SaveInterfaceLogAsync(log));
+                        return lastFlowResult;
+                    }
+                    // 成功：从 context.Data 提取排废结果
+                    if (flowContext.Data.TryGetValue("WasteDisposalResults", out var wasteResults))
+                    {
+                        lastFlowResult = ApiResultHelper.WcsSuccess("排废验证完成", ResultCodeTypes.一, 1, data: wasteResults);
+                    }
+                }
+                else if (requestType == Cst.排废更新)
+                {
+                    // ====== 排废完成：单次执行，所有容器码一起处理 ======
+                    var flowContext = new FlowContext(flowDb)
+                    {
+                        Phase = Cst.PhaseRequest,
+                        WcsRequest = requestInfo,
+                        StartLocation = trackedLoc,
+                        BusinessType = "WcsRequest",
+                        BusinessId = requestInfo.LocationCode
+                    };
+                    lastFlowResult = await _flowEngine.ExecuteAsync(template, flowContext);
+
+                    if (lastFlowResult.resultcode != ResultCodeTypes.一)
+                    {
+                        stopwatch.Stop();
+                        log.ResponseBody = Truncate(JsonConvert.SerializeObject(lastFlowResult), 8000);
+                        log.Success = false;
+                        log.DurationMs = stopwatch.ElapsedMilliseconds;
+                        log.Comment = lastFlowResult.msg;
+                        _ = _taskQueue.QueueAsync(_ => SaveInterfaceLogAsync(log));
+                        return lastFlowResult;
+                    }
+                    // 成功：从 context.Data 提取排废完成结果
+                    if (flowContext.Data.TryGetValue("WasteDisposalCaptureResults", out var captureResults))
+                    {
+                        lastFlowResult = ApiResultHelper.WcsSuccess("排废完成", ResultCodeTypes.一, 1, data: captureResults);
+                    }
                 }
                 else
                 {
@@ -235,7 +336,7 @@ public partial class WcsController : ControllerBase
                             log.Success = false;
                             log.DurationMs = stopwatch.ElapsedMilliseconds;
                             log.Comment = flowResult.msg;
-                            _ = Task.Run(() => SaveInterfaceLogAsync(log));
+                            _ = _taskQueue.QueueAsync(_ => SaveInterfaceLogAsync(log));
                             return flowResult;
                         }
 
@@ -249,7 +350,7 @@ public partial class WcsController : ControllerBase
                 log.Success = true;
                 log.DurationMs = stopwatch.ElapsedMilliseconds;
                 log.Comment = lastFlowResult?.msg;
-                _ = Task.Run(() => SaveInterfaceLogAsync(log));
+                _ = _taskQueue.QueueAsync(_ => SaveInterfaceLogAsync(log));
 
                 return lastFlowResult ?? ApiResultHelper.WcsSuccess("流程引擎处理成功", ResultCodeTypes.一, 1);
             }
@@ -266,7 +367,7 @@ public partial class WcsController : ControllerBase
                 log.Success = handlerResult.resultcode == ResultCodeTypes.一;
                 log.DurationMs = stopwatch.ElapsedMilliseconds;
                 log.Comment = handlerResult.msg;
-                _ = Task.Run(() => SaveInterfaceLogAsync(log));
+                _ = _taskQueue.QueueAsync(_ => SaveInterfaceLogAsync(log));
 
                 return handlerResult;
             }
@@ -298,7 +399,29 @@ public partial class WcsController : ControllerBase
             {
                 _wcsResult.resultcode = ResultCodeTypes.程序异常;
             }
-            _wcsResult.msg = $"位置: {requestInfo.LocationCode}，托盘码：{containerCode}，" + ex.Message + "," + _wcsResult.resultcode;
+            _wcsResult.msg = $"位置: {requestInfo.LocationCode}，托盘码：{containerCode}，操作失败," + _wcsResult.resultcode;
+
+            // SignalR 推送前端（fire-and-forget，避免延长 WCS 接口响应时间）
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _hub.Clients.All.SendAsync("ReceiveWcsError", new
+                    {
+                        locationCode = requestInfo.LocationCode,
+                        containerCode = containerCode,
+                        errorCode = _wcsResult.resultcode.ToString(),
+                        errorMessage = _wcsResult.msg,
+                        exceptionMessage = ex.Message,
+                        hasInnerException = ex.InnerException != null,
+                        timestamp = DateTime.UtcNow.ToString("o")
+                    });
+                }
+                catch (Exception hubEx)
+                {
+                    _logger.LogWarning(hubEx, "[WcsController] SignalR 推送 ReceiveWcsError 失败");
+                }
+            });
         }
 
         // 异步写入接口日志
@@ -307,7 +430,7 @@ public partial class WcsController : ControllerBase
         log.Success = _wcsResult.resultcode == ResultCodeTypes.一;
         log.DurationMs = stopwatch.ElapsedMilliseconds;
         log.Comment = _wcsResult.msg;
-        _ = Task.Run(() => SaveInterfaceLogAsync(log));
+        _ = _taskQueue.QueueAsync(_ => SaveInterfaceLogAsync(log));
 
         return _wcsResult;
     }
@@ -352,7 +475,7 @@ public partial class WcsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "WCS 任务同步失败");
-            return StatusCode(500, new { status = false, msg = "同步失败: " + ex.Message });
+            return StatusCode(500, new { status = false, msg = "同步失败，请检查服务端日志" });
         }
     }
 

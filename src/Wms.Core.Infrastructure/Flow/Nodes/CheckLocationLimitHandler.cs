@@ -30,7 +30,7 @@ public class CheckLocationLimitHandler : INodeHandler
         if (location == null)
             return Task.FromResult(NodeResult.Fail("起始位置为空"));
 
-        var requestType = context.StartLocation?.RequestType;
+        var requestType = context.FlowCategory;
 
         // 入库时检查 InboundDisabled + InboundLimit
         if (requestType == Cst.入库 || requestType == Cst.入库双叉)

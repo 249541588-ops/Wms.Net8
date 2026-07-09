@@ -1,7 +1,8 @@
+using Microsoft.EntityFrameworkCore;
 using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Domain.Repositories;
 using Wms.Core.Domain.Requests;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 
 namespace Wms.Core.Infrastructure.Services;
 
@@ -17,16 +18,26 @@ public class BatteryCellSortingService : IBatteryCellSortingService
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     }
 
-    public (IEnumerable<BatteryCellSorting> Data, int TotalCount) GetPagedList(string? keyword, int pageNumber, int pageSize)
+    public (IEnumerable<BatteryCellSorting> Data, int TotalCount) GetPagedList(string? keyword, short? isEnable, int? materialId, int pageNumber, int pageSize)
     {
         pageSize = Math.Min(pageSize, 100);
-        var query = _repository.GetAll();
+        IQueryable<BatteryCellSorting> query = _repository.GetAll().Include(s => s.Material);
 
         if (!string.IsNullOrEmpty(keyword))
         {
             query = query.Where(s => s.PickName!.Contains(keyword)
                 || s.PickId!.Contains(keyword)
                 || s.Passageway!.Contains(keyword));
+        }
+
+        if (isEnable.HasValue)
+        {
+            query = query.Where(s => s.IsEnable == isEnable.Value);
+        }
+
+        if (materialId.HasValue)
+        {
+            query = query.Where(s => s.MaterialId == materialId.Value);
         }
 
         var totalCount = query.Count();

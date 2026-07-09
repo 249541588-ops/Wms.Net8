@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Version>1.0.0</Version>
-    <Authors>Mes Team</Authors>
-    <Description>Mes Core Application Layer - DTOs and Application Services</Description>
+    <Authors>WMS Team</Authors>
+    <Description>WMS Core Application Layer - DTOs and Application Services</Description>
   </PropertyGroup>
 
   <ItemGroup>

@@ -85,7 +85,7 @@ public partial class UnitloadsOpsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取操作日志列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 }

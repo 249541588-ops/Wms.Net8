@@ -4,7 +4,7 @@ using Wms.Core.Application.DTOs;
 using Wms.Core.Domain.Common;
 using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Domain.Requests;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 
 namespace Wms.Core.WebApi.Controllers;
 
@@ -36,11 +36,11 @@ public class BatteryCellSortingController : ControllerBase
     /// 获取分页列表
     /// </summary>
     [HttpGet]
-    public Result GetAll(string? keyword = null, int pageNumber = 1, int pageSize = 20)
+    public Result GetAll(string? keyword = null, short? isEnable = null, int? materialId = null, int pageNumber = 1, int pageSize = 20)
     {
         try
         {
-            var (data, totalCount) = _service.GetPagedList(keyword, pageNumber, pageSize);
+            var (data, totalCount) = _service.GetPagedList(keyword, isEnable, materialId, pageNumber, pageSize);
             var pagedResult = new PagedResult<BatteryCellSorting>
             {
                 Data = data,
@@ -53,7 +53,7 @@ public class BatteryCellSortingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取分选列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -65,14 +65,14 @@ public class BatteryCellSortingController : ControllerBase
     {
         try
         {
-            var list = _service.GetPagedList(null, 1, 1000);
+            var list = _service.GetPagedList(null, null, null, 1, 1000);
             var data = list.Data.Select(s => new { s.Id, s.PickName, s.Passageway });
             return Result<object>.Success(data.ToList(), "获取成功");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取分选下拉列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -93,7 +93,7 @@ public class BatteryCellSortingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取分选详情失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -111,7 +111,7 @@ public class BatteryCellSortingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "创建分选失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -132,7 +132,7 @@ public class BatteryCellSortingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "更新分选失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -153,7 +153,7 @@ public class BatteryCellSortingController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "删除分选失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 }

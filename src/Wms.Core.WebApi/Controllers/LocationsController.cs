@@ -102,7 +102,7 @@ public partial class LocationsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -129,7 +129,7 @@ public partial class LocationsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取对象失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -195,7 +195,7 @@ public partial class LocationsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "创建失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -281,7 +281,7 @@ public partial class LocationsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "更新失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -322,7 +322,7 @@ public partial class LocationsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "删除失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -349,7 +349,7 @@ public partial class LocationsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取库位地图数据失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -397,7 +397,7 @@ public partial class LocationsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取货架汇总失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -444,7 +444,7 @@ public partial class LocationsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取货架网格失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -513,7 +513,7 @@ public partial class LocationsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "批量更新库位失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 

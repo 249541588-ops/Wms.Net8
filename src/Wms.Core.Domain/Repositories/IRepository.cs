@@ -1,5 +1,4 @@
 using global::System.Linq.Expressions;
-using Microsoft.EntityFrameworkCore.Query;
 using Wms.Core.Domain.Interfaces;
 
 namespace Wms.Core.Domain.Repositories;
@@ -106,23 +105,6 @@ public interface IRepository<T, TKey> where T : IEntity<TKey>
         int pageNumber,
         int pageSize,
         string orderBy = "Id ASC");
-
-    /// <summary>
-    /// 批量更新（直接在数据库执行，绕过 Change Tracker，不触发审计字段自动填充）
-    /// </summary>
-    /// <param name="predicate">筛选条件</param>
-    /// <param name="setters">要更新的属性设置委托</param>
-    /// <returns>受影响的行数</returns>
-    Task<int> BulkUpdateAsync(
-        Expression<Func<T, bool>> predicate,
-        Expression<Func<SetPropertyCalls<T>, SetPropertyCalls<T>>> setters);
-
-    /// <summary>
-    /// 批量删除（直接在数据库执行，绕过 Change Tracker，不触发审计字段自动填充）
-    /// </summary>
-    /// <param name="predicate">筛选条件</param>
-    /// <returns>受影响的行数</returns>
-    Task<int> BulkDeleteAsync(Expression<Func<T, bool>> predicate);
 }
 
 /// <summary>

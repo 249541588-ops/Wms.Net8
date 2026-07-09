@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
 using Wms.Core.Domain.Exceptions;
 
 namespace Wms.Core.WebApi.Middleware;
@@ -10,13 +11,15 @@ namespace Wms.Core.WebApi.Middleware;
 public class GlobalExceptionHandler : IMiddleware
 {
     private readonly ILogger<GlobalExceptionHandler> _logger;
+    private readonly IWebHostEnvironment _env;
 
     /// <summary>
     /// 初始化全局异常处理中间件类的新实例
     /// </summary>
-    public GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger)
+    public GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IWebHostEnvironment env)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _env = env ?? throw new ArgumentNullException(nameof(env));
     }
 
     /// <summary>
@@ -38,7 +41,7 @@ public class GlobalExceptionHandler : IMiddleware
     /// <summary>
     /// 处理异常并返回统一的错误响应
     /// </summary>
-    private static Task HandleExceptionAsync(HttpContext context, Exception exception)
+    private Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = exception switch
@@ -51,18 +54,19 @@ public class GlobalExceptionHandler : IMiddleware
             _ => (int)HttpStatusCode.InternalServerError
         };
 
+        // 开发环境返回原始 Message（便于调试），生产环境返回安全消息
+        var isDev = _env.IsDevelopment() || _env.IsEnvironment("Local");
         var response = new ErrorResponse
         {
             Status = context.Response.StatusCode,
-            Message = exception.Message,
+            Message = isDev ? exception.Message : GetErrorDetail(exception) ?? "服务器内部错误",
             Detail = GetErrorDetail(exception),
             Path = context.Request.Path,
             Method = context.Request.Method,
             Timestamp = DateTime.UtcNow
         };
 
-        // 生产环境不暴露详细错误信息
-        if (IsDevelopmentEnvironment())
+        if (isDev)
         {
             response = response with
             {
@@ -96,14 +100,6 @@ public class GlobalExceptionHandler : IMiddleware
         };
     }
 
-    /// <summary>
-    /// 判断是否为开发环境
-    /// </summary>
-    private static bool IsDevelopmentEnvironment()
-    {
-        var env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-        return env == "Development" || env == "Local";
-    }
 }
 
 /// <summary>

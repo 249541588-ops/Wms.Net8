@@ -54,6 +54,7 @@ public class User : IEntity<int>, IAuditable
     /// </summary>
     [Required]
     [MaxLength(256)]
+    [JsonIgnore]
     public virtual string PasswordHash { get; set; } = string.Empty;
 
     /// <summary>
@@ -61,6 +62,7 @@ public class User : IEntity<int>, IAuditable
     /// </summary>
     [Required]
     [MaxLength(128)]
+    [JsonIgnore]
     public virtual string PasswordSalt { get; set; } = string.Empty;
 
     /// <summary>
@@ -112,6 +114,18 @@ public class User : IEntity<int>, IAuditable
     /// 是否激活
     /// </summary>
     public virtual bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// 软删除时间（UTC）。null 表示未删除；非 null 表示已被软删除。
+    /// 软删除时同时将 <see cref="IsActive"/> 置为 false，保留此字段用于区分"软删除"与"普通禁用"。
+    /// </summary>
+    public virtual DateTime? DeletedAt { get; set; }
+
+    /// <summary>
+    /// 软删除操作人
+    /// </summary>
+    [MaxLength(64)]
+    public virtual string? DeletedBy { get; set; }
 
     /// <summary>
     /// 角色名称（不映射到数据库，仅用于 API 返回）
@@ -196,7 +210,7 @@ public class User : IEntity<int>, IAuditable
     }
 
     /// <summary>
-    /// 验证密码
+    /// 验证密码（兼容 BCrypt 和旧 HMAC 格式）
     /// </summary>
     /// <param name="password">明文密码</param>
     /// <returns>是否匹配</returns>
@@ -207,12 +221,19 @@ public class User : IEntity<int>, IAuditable
             return false;
         }
 
+        // BCrypt hash 以 "$2" 开头
+        if (PasswordHash != null && PasswordHash.StartsWith("$2"))
+        {
+            return BCrypt.Net.BCrypt.Verify(password, PasswordHash);
+        }
+
+        // 旧 HMAC 格式兼容
         var hash = HashPassword(password, PasswordSalt);
         return hash == PasswordHash;
     }
 
     /// <summary>
-    /// 设置密码
+    /// 设置密码（使用 BCrypt）
     /// </summary>
     /// <param name="password">明文密码</param>
     public virtual void SetPassword(string password)
@@ -222,9 +243,25 @@ public class User : IEntity<int>, IAuditable
             throw new ArgumentException("密码不能为空", nameof(password));
         }
 
-        PasswordSalt = GenerateSalt();
-        PasswordHash = HashPassword(password, PasswordSalt);
+        PasswordSalt = string.Empty; // BCrypt 自带 salt，不再需要单独存储
+        PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
         ModifiedTime = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// 检查密码是否为 BCrypt 格式
+    /// </summary>
+    public virtual bool IsBcryptHash()
+    {
+        return PasswordHash != null && PasswordHash.StartsWith("$2");
+    }
+
+    /// <summary>
+    /// 检查密码是否需要升级为 BCrypt（旧 HMAC 格式）
+    /// </summary>
+    public virtual bool NeedsPasswordRehash()
+    {
+        return PasswordHash != null && !PasswordHash.StartsWith("$2");
     }
 
     /// <summary>

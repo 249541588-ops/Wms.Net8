@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Wms.Core.Domain.Exceptions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using System.Text;
@@ -15,7 +16,7 @@ using Wms.Core.Domain.Enums;
 using Wms.Core.Domain.Extensions;
 using Wms.Core.Domain.Repositories;
 using Wms.Core.Domain.Requests;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 using Wms.Core.Domain.Tasks;
 using Wms.Core.Infrastructure.Handlers.WcsRequest;
 using Wms.Core.Infrastructure.Persistence;
@@ -217,12 +218,12 @@ public class UnitloadService : IUnitloadService
                 {
                     if (AllowsEmptyBarcode(request.CurrentOperation))
                         continue;
-                    throw new Exception(电芯码空 + $"：位置 {item.LocIndex} 电芯 {item.BatteryCode}");
+                    throw new InvalidRequestException(电芯码空 + $"：位置 {item.LocIndex} 电芯 {item.BatteryCode}");
                 }
                 else if (!string.IsNullOrEmpty(item.BatteryCode) && item.BatteryCode != 电芯码空)
                 {
                     if (!barcodesInRequest.Add(item.BatteryCode))
-                        throw new Exception(重码 + $"：位置 {item.LocIndex} 电芯 {item.BatteryCode}");
+                        throw new InvalidRequestException(重码 + $"：位置 {item.LocIndex} 电芯 {item.BatteryCode}");
                 }
             }
 
@@ -240,7 +241,7 @@ public class UnitloadService : IUnitloadService
                     .ToList();
 
                 if (existingBarcodes.Count > 0)
-                    throw new Exception(重码 + $"：电芯 {string.Join(",", existingBarcodes.Select(e => e.BarCode))} 已存在于明细中");
+                    throw new InvalidRequestException(重码 + $"：电芯 {string.Join(",", existingBarcodes.Select(e => e.BarCode))} 已存在于明细中");
             }
 
             var batchMap = new Dictionary<string, int>();
@@ -266,14 +267,14 @@ public class UnitloadService : IUnitloadService
                 {
                     if (AllowsEmptyBarcode(request.CurrentOperation))
                         continue;
-                    throw new Exception(漏码 + $"：位置 {i}");
+                    throw new InvalidRequestException(漏码 + $"：位置 {i}");
                 }
 
                 detail.BarCode = batteryItem.BatteryCode;
 
                 // 条码长度异常
                 if (batteryItem.BatteryCode.Length != 24)
-                    throw new Exception(条码异常 + $"：位置 {i} 电芯 {batteryItem.BatteryCode}");
+                    throw new InvalidRequestException(条码异常 + $"：位置 {i} 电芯 {batteryItem.BatteryCode}");
 
                 // 假电芯检测
                 bool isFake = false;
@@ -312,7 +313,7 @@ public class UnitloadService : IUnitloadService
             // 假电芯工艺校验
             if (!AllowsFakeBarcode(request.CurrentOperation) && fakeCount > 0)
             {
-                throw new Exception(假电芯 + $"：工艺 {request.CurrentOperation} 不允许假电芯，共 {fakeCount} 支");
+                throw new InvalidRequestException(假电芯 + $"：工艺 {request.CurrentOperation} 不允许假电芯，共 {fakeCount} 支");
             }
 
             // 记录假电芯数量
@@ -327,7 +328,7 @@ public class UnitloadService : IUnitloadService
             // 混批检查
             if (batchMap.Count > 1)
             {
-                throw new Exception(混批 + $"：{string.Join(",", batchMap.Keys)}");
+                throw new InvalidRequestException(混批 + $"：{string.Join(",", batchMap.Keys)}");
             }
 
             // 6.添加托盘操作日志
@@ -342,7 +343,7 @@ public class UnitloadService : IUnitloadService
         {
             transaction.Rollback();
             _logger.LogError(ex, "创建货载失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -412,7 +413,7 @@ public class UnitloadService : IUnitloadService
                         .Select(i => i.LocIndex)
                         .ToList();
                     if (emptyPositions.Count > 0)
-                        throw new Exception(电芯码空 + $"：位置 {string.Join(",", emptyPositions)}");
+                        throw new InvalidRequestException(电芯码空 + $"：位置 {string.Join(",", emptyPositions)}");
                 }
 
                 var barcodesInRequest = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -421,7 +422,7 @@ public class UnitloadService : IUnitloadService
                     if (string.IsNullOrEmpty(item.BatteryCode) || item.BatteryCode == 电芯码空)
                         continue;
                     if (!barcodesInRequest.Add(item.BatteryCode))
-                        throw new Exception(重码 + $"：位置 {item.LocIndex} 电芯 {item.BatteryCode}");
+                        throw new InvalidRequestException(重码 + $"：位置 {item.LocIndex} 电芯 {item.BatteryCode}");
                 }
 
                 foreach (var item in items)
@@ -429,11 +430,11 @@ public class UnitloadService : IUnitloadService
                     if (string.IsNullOrEmpty(item.BatteryCode) || item.BatteryCode == 电芯码空)
                         continue;
                     if (item.BatteryCode.Length != 24)
-                        throw new Exception(条码异常 + $"：位置 {item.LocIndex} 电芯 {item.BatteryCode}");
+                        throw new InvalidRequestException(条码异常 + $"：位置 {item.LocIndex} 电芯 {item.BatteryCode}");
                     if ((!string.IsNullOrEmpty(fakePrefix) && item.BatteryCode.StartsWith(fakePrefix)) || IsFakeBarcode(item.BatteryCode))
                         continue;
                     if (_db.Set<UnitloadItemDetail>().Any(d => d.BarCode == item.BatteryCode && !allUnitItemIds.Contains(d.UnitloadItemId ?? 0)))
-                        throw new Exception(重码 + $"：电芯 {item.BatteryCode} 已存在于明细中");
+                        throw new InvalidRequestException(重码 + $"：电芯 {item.BatteryCode} 已存在于明细中");
                 }
 
                 var batchMap = new Dictionary<string, int>();
@@ -452,9 +453,9 @@ public class UnitloadService : IUnitloadService
                     }
                 }
                 if (batchMap.Count > 1)
-                    throw new Exception(混批 + $"：{string.Join(",", batchMap.Keys)}");
+                    throw new InvalidRequestException(混批 + $"：{string.Join(",", batchMap.Keys)}");
                 if (!AllowsFakeBarcode(unitload.CurrentOperation) && fakeCount > 0)
-                    throw new Exception(假电芯 + $"：工艺 {unitload.CurrentOperation} 不允许假电芯，共 {fakeCount} 支");
+                    throw new InvalidRequestException(假电芯 + $"：工艺 {unitload.CurrentOperation} 不允许假电芯，共 {fakeCount} 支");
             }
 
             // === 阶段三：执行更新 ===
@@ -538,7 +539,7 @@ public class UnitloadService : IUnitloadService
         {
             transaction.Rollback();
             _logger.LogError(ex, "更新货载失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -722,7 +723,7 @@ public class UnitloadService : IUnitloadService
                         ngMessage.Append(漏码 + $"：位置 {item.Key}");
                         continue;
                     }
-                    throw new Exception(电芯码空 + $"：位置 {item.Key}");
+                    throw new InvalidRequestException(电芯码空 + $"：位置 {item.Key}");
                 }
 
                 // 条码长度异常
@@ -806,7 +807,7 @@ public class UnitloadService : IUnitloadService
         {
             transaction.Rollback();
             _logger.LogError(ex, "创建货载失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -985,6 +986,18 @@ public class UnitloadService : IUnitloadService
 
             var now = DateTime.Now;
 
+            // 4.1 清理 FK 引用（ArchiveUnitload 不含此步骤，必须先做；与 CleanupEmptyTrayItemsAsync 保持一致）
+            var containerCodeForCleanup = unitload.ContainerCode ?? string.Empty;
+            _db.Database.ExecuteSqlRaw(
+                "UPDATE Flows SET UnitloadId = NULL WHERE UnitloadId = {0}", unitloadId);
+            _db.Database.ExecuteSqlRaw(
+                "UPDATE Stocks SET UnitloadId = NULL WHERE UnitloadId = {0}", unitloadId);
+            _db.Database.ExecuteSqlRaw(
+                "UPDATE TransTasks SET UnitloadId = NULL, UnitloadCode = {1} WHERE UnitloadId = {0}",
+                unitloadId, containerCodeForCleanup);
+            _db.Database.ExecuteSqlRaw(
+                "UPDATE UnionUnitloadItems SET UnitloadId = NULL WHERE UnitloadId = {0}", unitloadId);
+
             // 5.归档（拷贝到 Archive 表 + 删除原始数据）
             LocationAllocator.ArchiveUnitload(_db, unitload, modifiedBy ?? "人工归档", unitload.ModifiedBy);
 
@@ -999,7 +1012,7 @@ public class UnitloadService : IUnitloadService
         {
             transaction.Rollback();
             _logger.LogError(ex, "归档失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -1148,7 +1161,7 @@ public class UnitloadService : IUnitloadService
         {
             transaction.Rollback();
             _logger.LogError(ex, "还原失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -1182,6 +1195,18 @@ public class UnitloadService : IUnitloadService
             if (_db.Set<TransTask>().Any(t => t.UnitloadId == unitloadId && t.ForWcs == true && t.WasSentToWcs != true))
                 return Result.Fail("货载有任务执行中，无法删除");
 
+            // 清理 FK 引用（与 CleanupEmptyTrayItemsAsync 保持一致，否则触发 FK_Flows_Unitload 等约束冲突）
+            var containerCodeForCleanup = unitload.ContainerCode ?? string.Empty;
+            _db.Database.ExecuteSqlRaw(
+                "UPDATE Flows SET UnitloadId = NULL WHERE UnitloadId = {0}", unitloadId);
+            _db.Database.ExecuteSqlRaw(
+                "UPDATE Stocks SET UnitloadId = NULL WHERE UnitloadId = {0}", unitloadId);
+            _db.Database.ExecuteSqlRaw(
+                "UPDATE TransTasks SET UnitloadId = NULL, UnitloadCode = {1} WHERE UnitloadId = {0}",
+                unitloadId, containerCodeForCleanup);
+            _db.Database.ExecuteSqlRaw(
+                "UPDATE UnionUnitloadItems SET UnitloadId = NULL WHERE UnitloadId = {0}", unitloadId);
+
             var itemIds = unitload.UnitloadItems?.Select(ui => ui.UnitloadItemId).ToList() ?? [];
             if (itemIds.Any())
             {
@@ -1200,7 +1225,7 @@ public class UnitloadService : IUnitloadService
         {
             transaction.Rollback();
             _logger.LogError(ex, "删除失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 }

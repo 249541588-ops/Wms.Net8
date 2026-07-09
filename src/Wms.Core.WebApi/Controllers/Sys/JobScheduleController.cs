@@ -1,5 +1,8 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 using Wms.Core.Domain.Requests;
+using Wms.Core.Infrastructure.Security;
 using Wms.Core.WebApi.Jobs;
 using Wms.Core.WebApi.Services;
 
@@ -8,9 +11,14 @@ namespace Wms.Core.WebApi.Controllers.Sys;
 /// <summary>
 /// 定时任务管理控制器（DB 驱动）
 /// </summary>
+/// <remarks>
+/// Q403 防御第一层：类级 <c>[Authorize(Roles = "Admin")]</c>，未授权用户（含匿名）无法创建/修改/删除定时任务，
+/// 阻断攻击者通过 http-call 任务发起 SSRF 的入口。
+/// </remarks>
 [ApiController]
 [Route("api/v1/[controller]")]
 [Produces("application/json")]
+[Authorize(Roles = "Admin")]
 public class JobScheduleController : ControllerBase
 {
     private readonly BackgroundJobService _jobService;
@@ -50,6 +58,10 @@ public class JobScheduleController : ControllerBase
                 cron = j.CronExpression,
                 description = j.Description,
                 state = j.State,
+                apiUrl = j.ApiUrl,
+                requestMethod = j.RequestType,
+                payload = j.Payload,
+                headers = j.JobArgs,
                 createdTime = j.CreatedTime,
                 modifiedTime = j.ModifiedTime
             }).ToList();
@@ -120,7 +132,7 @@ public class JobScheduleController : ControllerBase
             if (string.IsNullOrWhiteSpace(request.Cron))
                 return BadRequest(new { status = false, msg = "cron 表达式不能为空" });
 
-            await _jobService.UpdateCronAsync(id, request.Cron);
+            await _jobService.UpdateCronAsync(id, request.Cron, request.Description);
             return Ok(new { status = true, msg = "频率已更新" });
         }
         catch (KeyNotFoundException ex)
@@ -131,6 +143,41 @@ public class JobScheduleController : ControllerBase
         {
             _logger.LogError(ex, "修改任务频率失败");
             return StatusCode(500, new { status = false, msg = "修改失败: " + ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// 完整更新任务（名称/模式/Cron/请求配置等）
+    /// </summary>
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateJob(Guid id, [FromBody] CreateJobRequest request)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(request.JobType))
+                return BadRequest(new { status = false, msg = "执行模式不能为空" });
+            if (string.IsNullOrWhiteSpace(request.Name))
+                return BadRequest(new { status = false, msg = "任务名称不能为空" });
+            if (string.IsNullOrWhiteSpace(request.Cron))
+                return BadRequest(new { status = false, msg = "Cron 表达式不能为空" });
+
+            await _jobService.UpdateAsync(id, request.JobType, request.Name, request.Cron,
+                request.Description, request.ApiUrl, request.RequestMethod, request.Payload, request.Headers);
+
+            return Ok(new { status = true, msg = $"任务 {request.Name} 已更新" });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { status = false, msg = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { status = false, msg = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "更新定时任务失败");
+            return StatusCode(500, new { status = false, msg = "更新失败: " + ex.Message });
         }
     }
 

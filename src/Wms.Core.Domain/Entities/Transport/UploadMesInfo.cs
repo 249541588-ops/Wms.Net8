@@ -56,7 +56,7 @@ public class UploadMesInfo : IEntity<int>
     public virtual string MestextInfo { get; set; } = string.Empty;
 
     /// <summary>
-    /// MES标志
+    /// MES标志 1 未传 2 成功 3 失败
     /// </summary>
     public virtual int MesIsFlag { get; set; } = 0;
 

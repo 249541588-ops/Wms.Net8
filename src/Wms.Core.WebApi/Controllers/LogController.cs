@@ -111,7 +111,7 @@ public class LogController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "查询系统日志失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -131,7 +131,7 @@ public class LogController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "清理系统日志失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -154,7 +154,7 @@ public class LogController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "删除系统日志失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -173,7 +173,7 @@ public class LogController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "预览系统日志清理失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -193,6 +193,8 @@ public class LogController : ControllerBase
         DateTime? endTime = null,
         bool? success = null,
         bool? isDuplicate = null,
+        string? containerCode = null,
+        string? locationCode = null,
         int pageNumber = 1,
         int pageSize = 20)
     {
@@ -207,6 +209,12 @@ public class LogController : ControllerBase
 
             if (!string.IsNullOrWhiteSpace(endpoint))
                 query = query.Where(x => x.Endpoint == endpoint);
+
+            if (!string.IsNullOrWhiteSpace(containerCode))
+                query = query.Where(x => x.ContainerCode == containerCode);
+
+            if (!string.IsNullOrWhiteSpace(locationCode))
+                query = query.Where(x => x.LocationCode == locationCode);
 
             if (startTime.HasValue)
                 query = query.Where(x => x.CreatedTime >= startTime.Value);
@@ -257,7 +265,7 @@ public class LogController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "查询接口日志失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -277,7 +285,7 @@ public class LogController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "清理接口日志失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -296,7 +304,7 @@ public class LogController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "预览接口日志清理失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -368,7 +376,7 @@ public class LogController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "查询库位操作记录失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 

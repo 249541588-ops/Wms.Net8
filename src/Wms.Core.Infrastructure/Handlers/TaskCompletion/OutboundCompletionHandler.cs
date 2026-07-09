@@ -1,10 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Wms.Core.Domain.Constants;
 using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Domain.Entities.Transport;
+using Wms.Core.Domain.Entities.Warehouse;
 using Wms.Core.Domain.Enums;
-using Wms.Core.Domain.Interfaces;
+using Wms.Core.Application.Ports;
 using Wms.Core.Infrastructure.Handlers.WcsRequest;
 using Wms.Core.Infrastructure.Persistence;
 
@@ -14,7 +16,7 @@ namespace Wms.Core.Infrastructure.Handlers.TaskCompletion;
 /// 出库完成处理器
 /// </summary>
 /// <remarks>
-/// 完成时：出库流水 → UnitloadOp → 重置状态 → 拆盘归档 → ArchiveTask
+/// 完成时：出库流水 → UnitloadOp → 重置状态 → 拆盘归档 → ArchiveTask → MES → 杭可
 /// 取消时：回退 Unitload/Location 状态
 /// </remarks>
 public class OutboundCompletionHandler : ITaskCompletionHandler
@@ -22,18 +24,32 @@ public class OutboundCompletionHandler : ITaskCompletionHandler
     /// <summary>
     /// 任务类型：出库
     /// </summary>
-    public string TaskType => Cst.出库;
+    public string[] TaskTypes => [Cst.出库];
 
     private readonly WmsDbContext _db;
     private readonly ILogger<OutboundCompletionHandler> _logger;
+    private readonly IMesClient _mesClient;
+    private readonly IHangKeClient _hangkeClient;
+    private readonly MesClientOptions _mesOptions;
+    private readonly HangKeClientOptions _hangkeOptions;
 
     /// <summary>
     /// 初始化出库完成处理器
     /// </summary>
-    public OutboundCompletionHandler(WmsDbContext db, ILogger<OutboundCompletionHandler> logger)
+    public OutboundCompletionHandler(
+        WmsDbContext db,
+        ILogger<OutboundCompletionHandler> logger,
+        IMesClient mesClient,
+        IHangKeClient hangkeClient,
+        IOptions<MesClientOptions> mesOptions,
+        IOptions<HangKeClientOptions> hangkeOptions)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _mesClient = mesClient ?? throw new ArgumentNullException(nameof(mesClient));
+        _hangkeClient = hangkeClient ?? throw new ArgumentNullException(nameof(hangkeClient));
+        _mesOptions = mesOptions?.Value ?? throw new ArgumentNullException(nameof(mesOptions));
+        _hangkeOptions = hangkeOptions?.Value ?? throw new ArgumentNullException(nameof(hangkeOptions));
     }
 
     /// <summary>
@@ -51,8 +67,9 @@ public class OutboundCompletionHandler : ITaskCompletionHandler
         {
             // 查找 TransTask（Include 导航属性用于流水/拆盘/归档）
             var transTask = await _db.TransTasks
+                .Include(t => t.Unitload).ThenInclude(u => u.UnitloadItems).ThenInclude(ui => ui.Material)
                 .Include(t => t.Unitload).ThenInclude(u => u.UnitloadItems).ThenInclude(ui => ui.UnitloadItemDetails)
-                .Include(t => t.StartLocation)
+                .Include(t => t.StartLocation).ThenInclude(l => l!.Rack).ThenInclude(r => r!.Laneway)
                 .Include(t => t.EndLocation)
                 .FirstOrDefaultAsync(t => t.TaskCode == wcsTask.TaskCode);
 
@@ -142,9 +159,16 @@ public class OutboundCompletionHandler : ITaskCompletionHandler
     /// </summary>
     /// <remarks>
     /// 事务内执行：流水 → UnitloadOp → 重置状态 → 拆盘归档 → ArchiveTask → 统一提交
+    /// 事务外执行：MES 上传 → 杭可通知
     /// </remarks>
     private async Task HandleCompleteAsync(TransTask transTask)
     {
+        // 在步骤 4 覆盖 CurrentLocationTime 之前，保存原始入库时间（MES 出库时需要）
+        DateTime inboundTime = DateTime.Now;
+        string containerCode = string.Empty;
+        List<Unitload>? additionalUnitloads = null;
+        Location? startLocation = null;
+
         await using var tx = await _db.Database.BeginTransactionAsync();
         try
         {
@@ -159,8 +183,11 @@ public class OutboundCompletionHandler : ITaskCompletionHandler
                 return;
             }
 
+            containerCode = unitload.ContainerCode ?? string.Empty;
+            inboundTime = unitload.CurrentLocationTime ?? DateTime.Now;
+
             // 1. 加载额外 Unitload（含 UnitloadItems 用于流水）
-            List<Unitload>? additionalUnitloads = null;
+            additionalUnitloads = null;
             if (!string.IsNullOrEmpty(transTask.Ext2))
             {
                 var additionalIds = transTask.Ext2.Split(';', StringSplitOptions.RemoveEmptyEntries)
@@ -170,7 +197,7 @@ public class OutboundCompletionHandler : ITaskCompletionHandler
                 if (additionalIds.Count > 0)
                 {
                     additionalUnitloads = await _db.Unitloads
-                        .Include(u => u.UnitloadItems)
+                        .Include(u => u.UnitloadItems).ThenInclude(ui => ui.Material)
                         .Where(u => additionalIds.Contains(u.UnitloadId))
                         .ToListAsync();
                 }
@@ -181,7 +208,9 @@ public class OutboundCompletionHandler : ITaskCompletionHandler
             {
                 foreach (var item in unitload.UnitloadItems)
                 {
-                    if (item.MaterialId.HasValue)
+                    if (item.MaterialId.HasValue
+                        && item.Material?.MaterialCode != CommonTypes.空托盘
+                        && item.Material?.MaterialCode != CommonTypes.工装板)
                     {
                         var flow = LocationAllocator.CreateFlow(unitload, transTask, transTask.EndLocationId, Cst.出库, item.MaterialId.Value, item);
                         _db.Flows.Add(flow);
@@ -198,7 +227,9 @@ public class OutboundCompletionHandler : ITaskCompletionHandler
                     {
                         foreach (var item in au.UnitloadItems)
                         {
-                            if (item.MaterialId.HasValue)
+                            if (item.MaterialId.HasValue
+                                && item.Material?.MaterialCode != CommonTypes.空托盘
+                                && item.Material?.MaterialCode != CommonTypes.工装板)
                             {
                                 var flow = LocationAllocator.CreateFlow(au, transTask, transTask.EndLocationId, Cst.出库, item.MaterialId.Value, item);
                                 _db.Flows.Add(flow);
@@ -213,7 +244,7 @@ public class OutboundCompletionHandler : ITaskCompletionHandler
             }
 
             // 3. UnitloadOp 流水（主 Unitload）
-            LocationAllocator.AddUnitloadOp(_db, unitload.ContainerCode ?? string.Empty,
+            LocationAllocator.AddUnitloadOp(_db, containerCode,
                 UnitloadOps_Enum.OpType.自动.ToString(), UnitloadOps_Enum.Direction.出库.ToString(),
                 $"出库完成 TaskCode={transTask.TaskCode}");
 
@@ -235,8 +266,31 @@ public class OutboundCompletionHandler : ITaskCompletionHandler
                 }
             }
 
+            // 4.2 清理空托盘 UnitloadItem（若变空则归档+删除 Unitload）
+            var mainUnitloadDeleted = await LocationAllocator.CleanupEmptyTrayItemsAsync(
+                _db, unitload, $"出库完成 TaskCode={transTask.TaskCode}");
+            if (mainUnitloadDeleted)
+            {
+                _logger.LogInformation(
+                    "[TaskCompletion] 主 Unitload 清理空托盘后变空，已归档+删除: UnitloadId={UnitloadId}, ContainerCode={Code}",
+                    unitload.UnitloadId, containerCode);
+            }
+
+            if (additionalUnitloads != null)
+            {
+                foreach (var au in additionalUnitloads)
+                {
+                    var auDeleted = await LocationAllocator.CleanupEmptyTrayItemsAsync(
+                        _db, au, $"出库完成 TaskCode={transTask.TaskCode}");
+                    if (auDeleted)
+                        _logger.LogInformation(
+                            "[TaskCompletion] 额外 Unitload 清理空托盘后变空，已归档+删除: UnitloadId={UnitloadId}, ContainerCode={Code}",
+                            au.UnitloadId, au.ContainerCode);
+                }
+            }
+
             // 5. 减少起始位置的出库计数和托盘数
-            var startLocation = transTask.StartLocation;
+            startLocation = transTask.StartLocation;
             if (startLocation != null)
             {
                 if (startLocation.OutboundCount > 0)
@@ -256,12 +310,13 @@ public class OutboundCompletionHandler : ITaskCompletionHandler
             }
 
             // 6. 如果 UnitloadItems 是多个，进行拆盘+归档
-            if (unitload.UnitloadItems != null && unitload.UnitloadItems.Count > 1)
+            if (!mainUnitloadDeleted
+                && unitload.UnitloadItems != null && unitload.UnitloadItems.Count > 1)
             {
                 _logger.LogInformation("[TaskCompletion] 拆盘: UnitloadId={UnitloadId}, ContainerCode={ContainerCode}, Items={Count}",
                     unitload.UnitloadId, unitload.ContainerCode, unitload.UnitloadItems.Count);
 
-                LocationAllocator.SplitUnitload(_db, unitload, transTask.EndLocationId);
+                await LocationAllocator.SplitUnitloadAsync(_db, unitload, transTask.EndLocationId);
             }
 
             // 7. 任务归档
@@ -274,6 +329,90 @@ public class OutboundCompletionHandler : ITaskCompletionHandler
         {
             await tx.RollbackAsync();
             throw;
+        }
+
+        // ===== 事务提交后：外部调用（步骤 8-9）=====
+
+        // 8. 上传 MES
+        if (_mesOptions.Enable)
+        {
+            try
+            {
+                if (startLocation == null || string.IsNullOrWhiteSpace(containerCode))
+                {
+                    _logger.LogWarning("[TaskCompletion] 出库 MES 上传：目标库位或托盘条码为空，跳过: TaskCode={TaskCode}", transTask.TaskCode);
+                }
+                else
+                {
+                    var codes = new List<string>();
+                    codes.Add(containerCode);
+                    if (additionalUnitloads != null)
+                    {
+                        codes.AddRange(additionalUnitloads
+                            .Select(u => u.ContainerCode)
+                            .Where(c => !string.IsNullOrWhiteSpace(c)));
+                    }
+
+                    if (codes.Count > 0)
+                    {
+                        var mesResult = await _mesClient.SaveUploadMesInfoAsync(codes.ToArray(), startLocation, inboundTime, 2);
+                        _logger.LogInformation("[TaskCompletion] MES 上传结果: TaskCode={TaskCode}, Status={Status}, Message={Msg}",
+                            transTask.TaskCode, mesResult.status, mesResult.message);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[TaskCompletion] MES 上传失败: TaskCode={TaskCode}", transTask.TaskCode);
+            }
+        }
+
+        // 9. 通知杭可
+        if (_hangkeOptions.Enable)
+        {
+            try
+            {
+                if (startLocation == null || string.IsNullOrWhiteSpace(containerCode))
+                {
+                    _logger.LogWarning("[TaskCompletion] 出库杭可通知：目标库位或托盘条码为空，跳过: TaskCode={TaskCode}", transTask.TaskCode);
+                }
+                else
+                {
+                    var lanewayCode = startLocation.Rack?.Laneway?.LanewayCode;
+                    if (!string.IsNullOrEmpty(lanewayCode) && CommonTypes.化成分容柜对应库区.Contains(lanewayCode))
+                    {
+                        // 先调用杭可通知出库
+                        var result = await _hangkeClient.InOutNotifyAsync(
+                            startLocation.AnotherCode ?? "",
+                            containerCode,
+                            InOutType_Enum.出库);
+
+                        if (result.ResultCode == 1)
+                        {
+                            _logger.LogInformation("[TaskCompletion] 托盘 {ContainerCode} 杭可出库通知成功: 库位={LocCode}, ResultCode={Code}",
+                                containerCode, startLocation.LocationCode, result.ResultCode);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("[TaskCompletion] 托盘 {ContainerCode} 杭可出库通知失败: 库位={LocCode}, ResultCode={Code}, 原因={Msg}",
+                                containerCode, startLocation.LocationCode, result.ResultCode, result.ResultMessage);
+                        }
+
+                        // 杭可成功后恢复库位禁入状态
+                        if (result.ResultCode == 1)
+                        {
+                            startLocation.OutboundDisabled = true;
+                            startLocation.OutboundDisabledComment = $"{containerCode} 出库完成，禁出";
+                            startLocation.HKPosintionCK = 0;
+                            await _db.SaveChangesAsync();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[TaskCompletion] 杭可通知异常: TaskCode={TaskCode}", transTask.TaskCode);
+            }
         }
     }
 }

@@ -1,4 +1,4 @@
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 using Wms.Core.WebApi.Helpers;
 using Microsoft.AspNetCore.Http;
 

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Wms.Core.Domain.Entities.Identity;
 using Wms.Core.Domain.Repositories;
+using Wms.Core.Domain.Services;
 using Wms.Core.Infrastructure.Persistence;
 using Wms.Core.Infrastructure.Services;
 using Xunit;
@@ -18,6 +19,7 @@ public class AuthServiceTests
     private readonly Mock<IUserRepository> _mockUserRepo;
     private readonly Mock<IRepository<User, int>> _mockRepository;
     private readonly Mock<WmsDbContext> _mockDb;
+    private readonly Mock<IPasswordHasher> _mockPasswordHasher;
     private readonly Mock<ILogger<AuthService>> _mockLogger;
 
     public AuthServiceTests()
@@ -25,6 +27,7 @@ public class AuthServiceTests
         _mockUserRepo = new Mock<IUserRepository>();
         _mockRepository = new Mock<IRepository<User, int>>();
         _mockDb = new Mock<WmsDbContext>(new DbContextOptions<WmsDbContext>());
+        _mockPasswordHasher = new Mock<IPasswordHasher>();
         _mockLogger = new Mock<ILogger<AuthService>>();
     }
 
@@ -47,6 +50,7 @@ public class AuthServiceTests
             _mockUserRepo.Object,
             _mockRepository.Object,
             _mockDb.Object,
+            _mockPasswordHasher.Object,
             _mockLogger.Object);
 
         // Act
@@ -68,6 +72,7 @@ public class AuthServiceTests
             _mockUserRepo.Object,
             _mockRepository.Object,
             _mockDb.Object,
+            _mockPasswordHasher.Object,
             _mockLogger.Object);
 
         // Act
@@ -96,6 +101,7 @@ public class AuthServiceTests
             _mockUserRepo.Object,
             _mockRepository.Object,
             _mockDb.Object,
+            _mockPasswordHasher.Object,
             _mockLogger.Object);
 
         // Act
@@ -124,6 +130,7 @@ public class AuthServiceTests
             _mockUserRepo.Object,
             _mockRepository.Object,
             _mockDb.Object,
+            _mockPasswordHasher.Object,
             _mockLogger.Object);
 
         // Act

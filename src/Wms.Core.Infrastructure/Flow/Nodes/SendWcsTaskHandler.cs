@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Wms.Core.Engine;
-using Wms.Core.Domain.Interfaces;
+using Wms.Core.Application.Ports;
 
 namespace Wms.Core.Engine.Nodes;
 

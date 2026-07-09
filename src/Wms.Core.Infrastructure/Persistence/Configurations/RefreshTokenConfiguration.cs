@@ -25,5 +25,9 @@ internal class RefreshTokenConfiguration : IEntityTypeConfiguration<RefreshToken
         builder.Property(x => x.RevokedTime);
         builder.Property(x => x.IpAddress);
         builder.Property(x => x.UserAgent);
+        // R502: Token 家族 ID，用于检测 RefreshToken 重用并支持整族撤销
+        builder.Property(x => x.FamilyId).HasMaxLength(64);
+        // 撤销家族时按 FamilyId 高频检索，建立索引加速
+        builder.HasIndex(x => x.FamilyId).HasDatabaseName("IX_RefreshTokens_FamilyId");
     }
 }

@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Wms.Core.Domain.Entities.Transport;
-using Wms.Core.Domain.Interfaces;
+using Wms.Core.Application.Ports;
 
 namespace Wms.Core.Infrastructure.Clients;
 
@@ -28,6 +28,15 @@ public class HttpWcsTaskBridge : IWcsTaskBridge
     public Task<IReadOnlyList<WcsTask>> PollStatusChangesAsync()
     {
         _logger.LogWarning("[WcsBridge-Http] PollStatusChangesAsync 尚未实现");
+        throw new NotImplementedException("HTTP 模式 WCS 通信尚未实现，请切换到 Database 模式");
+    }
+
+    /// <summary>
+    /// 删除已下发的任务（HTTP 模式未实现）
+    /// </summary>
+    public Task<bool> DeleteTaskAsync(string taskCode)
+    {
+        _logger.LogWarning("[WcsBridge-Http] DeleteTaskAsync 尚未实现");
         throw new NotImplementedException("HTTP 模式 WCS 通信尚未实现，请切换到 Database 模式");
     }
 }

@@ -110,18 +110,23 @@ public class WmsDbContext : DbContext
     public DbSet<BackgroundJob> BackgroundJobs { get; set; }
     public DbSet<AppSeq> AppSeqs { get; set; }
     public DbSet<AppSetting> AppSettings { get; set; }
-    public DbSet<SysTimedTask> SysTimedTasks { get; set; }
     public DbSet<Ocv3ScanCodeBatchProcess> Ocv3ScanCodeBatchProcesses { get; set; }
     public DbSet<AllowedOpType> AllowedOpTypes { get; set; }
     public DbSet<RoleOpType> RoleOpTypes { get; set; }
     public DbSet<LocationAllocRuleStat> LocationAllocRuleStats { get; set; }
     public DbSet<LocationOp> LocationOps { get; set; }
+    public DbSet<WasteBatchSetting> WasteBatchSettings { get; set; }
 
     // 流程引擎
     public DbSet<FlowTemplate> FlowTemplates { get; set; }
     public DbSet<FlowNode> FlowNodes { get; set; }
     public DbSet<FlowInstance> FlowInstances { get; set; }
     public DbSet<FlowNodeLog> FlowNodeLogs { get; set; }
+
+    // 报表
+    public DbSet<ReportConfig> ReportConfigs { get; set; }
+    public DbSet<UserReportConfig> UserReportConfigs { get; set; }
+    public DbSet<ReportExportTask> ReportExportTasks { get; set; }
 
     /// <summary>
     /// 配置模型

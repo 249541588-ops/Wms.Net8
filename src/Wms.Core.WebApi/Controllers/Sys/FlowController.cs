@@ -43,7 +43,7 @@ public class FlowController : ControllerBase
     public async Task<IActionResult> GetTemplates([FromQuery] string? category)
     {
         var query = _db.FlowTemplates
-            .Include(t => t.Nodes!.OrderBy(n => n.StepOrder))
+            .Include(t => t.Nodes!.Where(n => !n.IsDeleted).OrderBy(n => n.StepOrder))
             .AsQueryable();
 
         if (!string.IsNullOrEmpty(category))
@@ -63,7 +63,7 @@ public class FlowController : ControllerBase
     public async Task<IActionResult> GetTemplate(int id)
     {
         var template = await _db.FlowTemplates
-            .Include(t => t.Nodes!.OrderBy(n => n.StepOrder))
+            .Include(t => t.Nodes!.Where(n => !n.IsDeleted).OrderBy(n => n.StepOrder))
             .FirstOrDefaultAsync(t => t.Id == id);
 
         if (template == null)
@@ -152,6 +152,22 @@ public class FlowController : ControllerBase
         if (template == null)
             return NotFound(new { message = "模板不存在" });
 
+        // 检查是否有同 NodeType 的软删除记录，有则恢复而非新建
+        var deleted = await _db.FlowNodes
+            .FirstOrDefaultAsync(n => n.TemplateId == templateId && n.NodeType == node.NodeType && n.IsDeleted);
+
+        if (deleted != null)
+        {
+            deleted.NodeName = node.NodeName;
+            deleted.StepOrder = node.StepOrder;
+            deleted.IsEnabled = true;
+            deleted.OnFailure = node.OnFailure ?? deleted.OnFailure;
+            deleted.IsDeleted = false;
+            await _db.SaveChangesAsync();
+            _flowEngine.ClearCache();
+            return Ok(deleted);
+        }
+
         node.TemplateId = templateId;
         _db.FlowNodes.Add(node);
         await _db.SaveChangesAsync();
@@ -197,7 +213,7 @@ public class FlowController : ControllerBase
         if (node == null)
             return NotFound(new { message = "节点不存在" });
 
-        _db.FlowNodes.Remove(node);
+        node.IsDeleted = true;
         await _db.SaveChangesAsync();
 
         _flowEngine.ClearCache();

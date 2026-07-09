@@ -2,8 +2,10 @@ using System.Linq.Expressions;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
+using Wms.Core.Application.Ports;
 using Wms.Core.Domain.Interfaces;
 using Wms.Core.Domain.Repositories;
+using Wms.Core.Infrastructure.Security;
 
 namespace Wms.Core.Infrastructure.Persistence.Repositories;
 
@@ -12,7 +14,7 @@ namespace Wms.Core.Infrastructure.Persistence.Repositories;
 /// </summary>
 /// <typeparam name="T">实体类型</typeparam>
 /// <typeparam name="TKey">主键类型</typeparam>
-public class Repository<T, TKey> : IRepository<T, TKey> where T : class, IEntity<TKey>
+public class Repository<T, TKey> : IRepository<T, TKey>, IBulkRepository<T, TKey> where T : class, IEntity<TKey>
 {
     protected readonly WmsDbContext _db;
 
@@ -203,11 +205,9 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : class, IEntity
     }
 
     /// <summary>
-    /// 校验 orderBy 参数，防止 SQL 注入（仅允许字母/数字/下划线的列名 + ASC/DESC 方向）
+    /// 校验 orderBy 参数，防止 SQL 注入（仅允许字母/数字/下划线的列名 + ASC/DESC 方向）。
+    /// 白名单规则统一复用 <see cref="Wms.Core.Infrastructure.Security.SqlSafety"/>。
     /// </summary>
-    private static readonly HashSet<string> AllowedDirections = new(StringComparer.OrdinalIgnoreCase) { "ASC", "DESC" };
-    private static readonly Regex SafeColumnRegex = new(@"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$", RegexOptions.Compiled);
-
     private static string SanitizeOrderBy(string orderBy, string fallback = "Id ASC")
     {
         if (string.IsNullOrWhiteSpace(orderBy)) return fallback;
@@ -223,8 +223,8 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : class, IEntity
             var column = parts[0];
             var direction = parts.Length == 2 ? parts[1] : "ASC";
 
-            if (!SafeColumnRegex.IsMatch(column)) continue;
-            if (!AllowedDirections.Contains(direction)) continue;
+            if (!SqlSafety.IsValidOrderByColumn(column)) continue;
+            if (!SqlSafety.IsValidSortDirection(direction)) continue;
 
             sanitized.Add($"{column} {direction}");
         }

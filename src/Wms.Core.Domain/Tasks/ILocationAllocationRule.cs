@@ -1,4 +1,3 @@
-using Microsoft.Data.SqlClient;
 using Wms.Core.Domain.Entities.Warehouse;
 
 namespace Wms.Core.Domain.Tasks;

@@ -59,7 +59,7 @@ public class SplitUnitloadHandler : INodeHandler
         if (isCompletion)
         {
             var targetLocationId = transTask.EndLocationId;
-            LocationAllocator.SplitUnitload(context.Db, unitload, targetLocationId);
+            await LocationAllocator.SplitUnitloadAsync(context.Db, unitload, targetLocationId);
 
             // 额外 Unitload 也拆盘（自加载 Details）
             var additional = context.Data.GetValueOrDefault("AdditionalUnitloads") as List<Unitload>;
@@ -78,7 +78,7 @@ public class SplitUnitloadHandler : INodeHandler
                     {
                         _logger.LogInformation("[FlowNode:SplitUnitload] 拆盘: UnitloadId={UnitloadId}, ContainerCode={ContainerCode}, Items={Count}",
                             loadedAu.UnitloadId, loadedAu.ContainerCode, loadedAu.UnitloadItems.Count);
-                        LocationAllocator.SplitUnitload(context.Db, loadedAu, targetLocationId);
+                        await LocationAllocator.SplitUnitloadAsync(context.Db, loadedAu, targetLocationId);
                     }
                 }
             }

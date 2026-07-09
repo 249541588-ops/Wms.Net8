@@ -13,7 +13,7 @@ using Wms.Core.Domain.Entities.Warehouse;
 using Wms.Core.Domain.Enums;
 using Wms.Core.Domain.Repositories;
 using Wms.Core.Domain.Requests;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 using Wms.Core.Infrastructure.Mappers;
 using Wms.Core.Infrastructure.Persistence;
 using Wms.Core.WebApi.Extensions;
@@ -59,12 +59,32 @@ public partial class ArchivedUnitloadsController : ControllerBase
     /// <param name="batch">批次（可选）</param>
     /// <param name="currentOperation">当前工艺（可选）</param>
     /// <param name="operationNumber">工艺次数（可选）</param>
+    /// <param name="barCode">电芯码（可选，模糊匹配）</param>
+    /// <param name="hasCountingError">是否异常（可选）</param>
+    /// <param name="locationCode">当前位置（可选，模糊匹配）</param>
+    /// <param name="warehouseId">所属库区 ID（可选）</param>
+    /// <param name="materialCode">物料编码（可选）</param>
+    /// <param name="archivedAtStart">归档时间-开始（可选）</param>
+    /// <param name="archivedAtEnd">归档时间-结束（可选）</param>
     /// <param name="pageNumber">页码（默认 1）</param>
     /// <param name="pageSize">每页大小（默认 20，最大 100）</param>
     /// <returns>数据列表</returns>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public Result GetAll(string? containerCode = null, string? batch = null, string? currentOperation = null, int? operationNumber = null, int pageNumber = 1, int pageSize = 20)
+    public Result GetAll(
+        string? containerCode = null,
+        string? batch = null,
+        string? currentOperation = null,
+        int? operationNumber = null,
+        string? barCode = null,
+        bool? hasCountingError = null,
+        string? locationCode = null,
+        int? warehouseId = null,
+        string? materialCode = null,
+        DateTime? archivedAtStart = null,
+        DateTime? archivedAtEnd = null,
+        int pageNumber = 1,
+        int pageSize = 20)
     {
         try
         {
@@ -98,13 +118,77 @@ public partial class ArchivedUnitloadsController : ControllerBase
                 query = query.Where(m => matchedIds.Contains(m.Id));
             }
 
+            // 电芯码：ArchivedUnitloadItemDetail → ArchivedUnitloadItem → ArchivedUnitload（归档实体无导航属性，两步查询）
+            if (!string.IsNullOrEmpty(barCode))
+            {
+                var matchedItemIds = _db.Set<ArchivedUnitloadItemDetail>()
+                    .Where(d => d.BarCode != null && d.BarCode.Contains(barCode) && d.UnitloadItemId.HasValue)
+                    .Select(d => d.UnitloadItemId.Value)
+                    .Distinct()
+                    .ToList();
+                var matchedIds = _db.Set<ArchivedUnitloadItem>()
+                    .Where(i => matchedItemIds.Contains(i.Id))
+                    .Select(i => i.UnitloadId)
+                    .Distinct()
+                    .ToList();
+                query = query.Where(m => matchedIds.Contains(m.Id));
+            }
+
+            // 物料编码：ArchivedUnitloadItem 与 Materials 手动 Join（沿用控制器内现有 join 风格）
+            if (!string.IsNullOrEmpty(materialCode))
+            {
+                var matchedIds = (from i in _db.Set<ArchivedUnitloadItem>()
+                                  join m in _db.Set<Materials>() on i.MaterialId equals m.MaterialId
+                                  where m.MaterialCode == materialCode
+                                  select i.UnitloadId)
+                                  .Distinct()
+                                  .ToList();
+                query = query.Where(m => matchedIds.Contains(m.Id));
+            }
+
+            // 是否异常：直接字段过滤
+            if (hasCountingError.HasValue)
+            {
+                query = query.Where(m => m.HasCountingError == hasCountingError.Value);
+            }
+
+            // 当前位置：通过 LocationId 子查询（ArchivedUnitload 只有 LocationId，无导航）
+            if (!string.IsNullOrEmpty(locationCode))
+            {
+                var matchedLocationIds = _db.Set<Location>()
+                    .Where(l => l.LocationCode != null && l.LocationCode.Contains(locationCode))
+                    .Select(l => l.LocationId)
+                    .ToList();
+                query = query.Where(m => m.LocationId.HasValue && matchedLocationIds.Contains(m.LocationId.Value));
+            }
+
+            // 所属库区：通过 Location.WarehouseId 子查询
+            if (warehouseId.HasValue)
+            {
+                var matchedLocationIds = _db.Set<Location>()
+                    .Where(l => l.WarehouseId == warehouseId.Value)
+                    .Select(l => l.LocationId)
+                    .ToList();
+                query = query.Where(m => m.LocationId.HasValue && matchedLocationIds.Contains(m.LocationId.Value));
+            }
+
+            // 归档时间范围（ArchivedAt 是非可空 DateTime）
+            if (archivedAtStart.HasValue)
+            {
+                query = query.Where(m => m.ArchivedAt >= archivedAtStart.Value);
+            }
+            if (archivedAtEnd.HasValue)
+            {
+                query = query.Where(m => m.ArchivedAt <= archivedAtEnd.Value);
+            }
+
             var totalCount = query.Count();
 
             // 分页查询归档货载，左连接 Location 获取库位编码
             var lists = (from au in query
                          join loc in _db.Set<Location>() on au.LocationId equals loc.LocationId into locs
                          from loc in locs.DefaultIfEmpty()
-                         orderby au.Id
+                         orderby au.ArchivedAt descending
                          select new
                          {
                              au.Id,
@@ -189,7 +273,7 @@ public partial class ArchivedUnitloadsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取归档列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -272,7 +356,7 @@ public partial class ArchivedUnitloadsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取归档对象失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }        
 
@@ -322,7 +406,7 @@ public partial class ArchivedUnitloadsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "删除归档记录失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 

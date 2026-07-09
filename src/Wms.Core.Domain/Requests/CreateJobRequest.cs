@@ -52,4 +52,9 @@ public class CreateJobRequest
 public class UpdateCronRequest
 {
     public string Cron { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 描述
+    /// </summary>
+    public string? Description { get; set; }
 }

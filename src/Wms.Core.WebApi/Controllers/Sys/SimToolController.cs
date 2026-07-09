@@ -7,7 +7,7 @@ using Wms.Core.Domain.Common;
 using Wms.Core.Domain.Constants;
 using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Domain.Enums;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 using Wms.Core.Infrastructure.Handlers.WcsRequest;
 using Wms.Core.Infrastructure.Persistence;
 
@@ -79,7 +79,7 @@ public class SimToolController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "[SimTool] 修改工艺信息失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -151,7 +151,7 @@ public class SimToolController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "[SimTool] 修改库位信息失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -203,7 +203,7 @@ public class SimToolController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "[SimTool] 清理库位失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -322,7 +322,7 @@ public class SimToolController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "[SimTool] 创建货载失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -345,7 +345,7 @@ public class SimToolController : ControllerBase
                 return Result.Fail($"托盘 {request.ContainerCode} 只有单物料，无需拆盘");
 
             var targetLocationId = unitload.LocationId ?? 0;
-            LocationAllocator.SplitUnitload(_db, unitload, targetLocationId);
+            await LocationAllocator.SplitUnitloadAsync(_db, unitload, targetLocationId);
 
             _unitloadService.AddUnitloadOp(request.ContainerCode,
                 UnitloadOps_Enum.OpType.人工.ToString(), UnitloadOps_Enum.Direction.拆盘.ToString(),
@@ -359,7 +359,7 @@ public class SimToolController : ControllerBase
         {
             await transaction.RollbackAsync();
             _logger.LogError(ex, "[SimTool] 拆盘失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -400,7 +400,7 @@ public class SimToolController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "[SimTool] 修改标识失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -440,7 +440,7 @@ public class SimToolController : ControllerBase
             if (activeTasks > 0)
                 return Result.Fail($"关联 {activeTasks} 个未完成任务，不允许叠盘");
 
-            LocationAllocator.MergeUnitloads(_db, target, source);
+            await LocationAllocator.MergeUnitloadsAsync(_db, target, source, "SIM叠盘");
 
             if (sourceLocId > 0)
             {
@@ -462,7 +462,7 @@ public class SimToolController : ControllerBase
         {
             await transaction.RollbackAsync();
             _logger.LogError(ex, "[SimTool] 叠盘失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 

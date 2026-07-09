@@ -66,6 +66,16 @@ public class FlowNode
     public bool IsTransactionBoundary { get; set; }
 
     /// <summary>
+    /// 事务后节点：标记为 true 的节点在事务提交后执行（适用于 MES 上传、杭可通知等外部 HTTP 调用）
+    /// </summary>
+    public bool IsPostTransaction { get; set; }
+
+    /// <summary>
+    /// 软删除标记：用户在前端删除节点时标记为 true，种子同步不会恢复被软删除的节点
+    /// </summary>
+    public bool IsDeleted { get; set; }
+
+    /// <summary>
     /// 所属模板导航属性
     /// </summary>
     public virtual FlowTemplate? Template { get; set; }

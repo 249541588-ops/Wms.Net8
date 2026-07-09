@@ -7,7 +7,7 @@ using Wms.Core.Domain.Entities.Warehouse;
 using Wms.Core.Domain.Enums;
 using Wms.Core.Domain.Repositories;
 using Wms.Core.Domain.Requests;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 using Wms.Core.Infrastructure.Persistence;
 using Wms.Core.WebApi.Extensions;
 using Wms.Core.WebApi.Filters;
@@ -87,7 +87,7 @@ public partial class PortController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -114,7 +114,7 @@ public partial class PortController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取对象失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -139,7 +139,7 @@ public partial class PortController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取关联巷道失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -160,7 +160,7 @@ public partial class PortController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "创建失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -184,7 +184,7 @@ public partial class PortController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "更新失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -220,7 +220,7 @@ public partial class PortController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "删除失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 }

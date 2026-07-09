@@ -5,7 +5,7 @@ using Wms.Core.Application.DTOs;
 using Wms.Core.Domain.Common;
 using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Domain.Repositories;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 using Wms.Core.Infrastructure.Persistence;
 
 namespace Wms.Core.WebApi.Controllers.Unitloads;
@@ -48,12 +48,36 @@ public partial class UnitloadsController : ControllerBase
     /// <param name="batch">批次（可选）</param>
     /// <param name="currentOperation">当前工艺（可选）</param>
     /// <param name="operationNumber">工艺次数（可选）</param>
+    /// <param name="barCode">电芯码（可选，模糊匹配）</param>
+    /// <param name="beingMoved">是否移动（可选）</param>
+    /// <param name="allocated">是否分配（可选）</param>
+    /// <param name="hasCountingError">是否异常（可选）</param>
+    /// <param name="locationCode">当前位置（可选，模糊匹配）</param>
+    /// <param name="warehouseId">所属库区 ID（可选）</param>
+    /// <param name="materialCode">物料编码（可选）</param>
+    /// <param name="currentLocationTimeStart">当前位置时间-开始（可选）</param>
+    /// <param name="currentLocationTimeEnd">当前位置时间-结束（可选）</param>
     /// <param name="pageNumber">页码（默认 1）</param>
     /// <param name="pageSize">每页大小（默认 20，最大 100）</param>
     /// <returns>数据列表</returns>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public Result GetAll(string? containerCode = null, string? batch = null, string? currentOperation = null, int? operationNumber = null, int pageNumber = 1, int pageSize = 20)
+    public Result GetAll(
+        string? containerCode = null,
+        string? batch = null,
+        string? currentOperation = null,
+        int? operationNumber = null,
+        string? barCode = null,
+        bool? beingMoved = null,
+        bool? allocated = null,
+        bool? hasCountingError = null,
+        string? locationCode = null,
+        int? warehouseId = null,
+        string? materialCode = null,
+        DateTime? currentLocationTimeStart = null,
+        DateTime? currentLocationTimeEnd = null,
+        int pageNumber = 1,
+        int pageSize = 20)
     {
         try
         {
@@ -86,6 +110,66 @@ public partial class UnitloadsController : ControllerBase
                     .Distinct()
                     .ToList();
                 query = query.Where(m => matchedIds.Contains(m.UnitloadId));
+            }
+
+            // 电芯码在 UnitloadItemDetail 上，通过子查询过滤（跨 3 层实体）
+            if (!string.IsNullOrEmpty(barCode))
+            {
+                var matchedIds = _db.Set<UnitloadItemDetail>()
+                    .Where(d => d.BarCode != null && d.BarCode.Contains(barCode))
+                    .Select(d => d.UnitloadItem.UnitloadId)
+                    .Distinct()
+                    .ToList();
+                query = query.Where(m => matchedIds.Contains(m.UnitloadId));
+            }
+
+            // 物料编码在 UnitloadItem.Material 上
+            if (!string.IsNullOrEmpty(materialCode))
+            {
+                var matchedIds = _db.Set<UnitloadItem>()
+                    .Where(i => i.Material != null && i.Material.MaterialCode == materialCode)
+                    .Select(i => i.UnitloadId)
+                    .Distinct()
+                    .ToList();
+                query = query.Where(m => matchedIds.Contains(m.UnitloadId));
+            }
+
+            // 直接字段过滤
+            if (beingMoved.HasValue)
+            {
+                query = query.Where(m => m.BeingMoved == beingMoved.Value);
+            }
+
+            if (allocated.HasValue)
+            {
+                query = query.Where(m => m.Allocated == allocated.Value);
+            }
+
+            if (hasCountingError.HasValue)
+            {
+                query = query.Where(m => m.HasCountingError == hasCountingError.Value);
+            }
+
+            // 通过 Location 导航属性过滤（EF Core 会生成 LEFT JOIN）
+            if (!string.IsNullOrEmpty(locationCode))
+            {
+                query = query.Where(m => m.Location != null && m.Location.LocationCode != null && m.Location.LocationCode.Contains(locationCode));
+            }
+
+            if (warehouseId.HasValue)
+            {
+                query = query.Where(m => m.Location != null && m.Location.WarehouseId == warehouseId.Value);
+            }
+
+            // 时间范围
+            if (currentLocationTimeStart.HasValue)
+            {
+                query = query.Where(m => m.CurrentLocationTime >= currentLocationTimeStart.Value);
+            }
+
+            if (currentLocationTimeEnd.HasValue)
+            {
+                query = query.Where(m => m.CurrentLocationTime <= currentLocationTimeEnd.Value);
             }
 
             // 获取总数
@@ -141,7 +225,7 @@ public partial class UnitloadsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -152,12 +236,34 @@ public partial class UnitloadsController : ControllerBase
     /// <param name="batch">批次（可选）</param>
     /// <param name="currentOperation">当前工艺（可选）</param>
     /// <param name="operationNumber">工艺次数（可选）</param>
+    /// <param name="barCode">电芯码（可选，模糊匹配）</param>
+    /// <param name="beingMoved">是否移动（可选）</param>
+    /// <param name="allocated">是否分配（可选）</param>
+    /// <param name="hasCountingError">是否异常（可选）</param>
+    /// <param name="locationCode">当前位置（可选，模糊匹配）</param>
+    /// <param name="materialCode">物料编码（可选）</param>
+    /// <param name="currentLocationTimeStart">当前位置时间-开始（可选）</param>
+    /// <param name="currentLocationTimeEnd">当前位置时间-结束（可选）</param>
     /// <param name="pageNumber">页码（默认 1）</param>
     /// <param name="pageSize">每页大小（默认 20，最大 100）</param>
     /// <returns>数据列表</returns>
     [HttpGet("Pending")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public Result GetPending(string? containerCode = null, string? batch = null, string? currentOperation = null, int? operationNumber = null, int pageNumber = 1, int pageSize = 20)
+    public Result GetPending(
+        string? containerCode = null,
+        string? batch = null,
+        string? currentOperation = null,
+        int? operationNumber = null,
+        string? barCode = null,
+        bool? beingMoved = null,
+        bool? allocated = null,
+        bool? hasCountingError = null,
+        string? locationCode = null,
+        string? materialCode = null,
+        DateTime? currentLocationTimeStart = null,
+        DateTime? currentLocationTimeEnd = null,
+        int pageNumber = 1,
+        int pageSize = 20)
     {
         try
         {
@@ -190,6 +296,61 @@ public partial class UnitloadsController : ControllerBase
                     .Distinct()
                     .ToList();
                 query = query.Where(m => matchedIds.Contains(m.UnitloadId));
+            }
+
+            // 电芯码：跨 3 层实体子查询（导航属性已注册）
+            if (!string.IsNullOrEmpty(barCode))
+            {
+                var matchedIds = _db.Set<UnitloadItemDetail>()
+                    .Where(d => d.BarCode != null && d.BarCode.Contains(barCode))
+                    .Select(d => d.UnitloadItem.UnitloadId)
+                    .Distinct()
+                    .ToList();
+                query = query.Where(m => matchedIds.Contains(m.UnitloadId));
+            }
+
+            // 物料编码：通过 UnitloadItem.Material 导航属性
+            if (!string.IsNullOrEmpty(materialCode))
+            {
+                var matchedIds = _db.Set<UnitloadItem>()
+                    .Where(i => i.Material != null && i.Material.MaterialCode == materialCode)
+                    .Select(i => i.UnitloadId)
+                    .Distinct()
+                    .ToList();
+                query = query.Where(m => matchedIds.Contains(m.UnitloadId));
+            }
+
+            // 直接字段过滤
+            if (beingMoved.HasValue)
+            {
+                query = query.Where(m => m.BeingMoved == beingMoved.Value);
+            }
+
+            if (allocated.HasValue)
+            {
+                query = query.Where(m => m.Allocated == allocated.Value);
+            }
+
+            if (hasCountingError.HasValue)
+            {
+                query = query.Where(m => m.HasCountingError == hasCountingError.Value);
+            }
+
+            // 通过 Location 导航属性过滤（初始 query 已 Include Location）
+            if (!string.IsNullOrEmpty(locationCode))
+            {
+                query = query.Where(m => m.Location != null && m.Location.LocationCode != null && m.Location.LocationCode.Contains(locationCode));
+            }
+
+            // 时间范围
+            if (currentLocationTimeStart.HasValue)
+            {
+                query = query.Where(m => m.CurrentLocationTime >= currentLocationTimeStart.Value);
+            }
+
+            if (currentLocationTimeEnd.HasValue)
+            {
+                query = query.Where(m => m.CurrentLocationTime <= currentLocationTimeEnd.Value);
             }
 
             var totalCount = query.Count();
@@ -241,7 +402,7 @@ public partial class UnitloadsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取待入库货载失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -274,7 +435,7 @@ public partial class UnitloadsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取对象失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -303,7 +464,7 @@ public partial class UnitloadsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "按容器编码获取货载失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -322,7 +483,7 @@ public partial class UnitloadsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "更新货载失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 

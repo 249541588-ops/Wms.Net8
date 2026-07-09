@@ -10,6 +10,7 @@ using Wms.Core.Domain.Enums;
 using Wms.Core.Domain.Utilities.Response;
 using Wms.Core.Engine;
 using Wms.Core.Infrastructure.Persistence;
+using Wms.Core.Application.Ports;
 
 namespace Wms.Core.Infrastructure.Services;
 
@@ -25,6 +26,7 @@ public class FlowEngineService : IFlowEngine
     private readonly IMemoryCache _cache;
     private readonly ILogger<FlowEngineService> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IBackgroundTaskQueue _taskQueue;
 
     /// <summary>
     /// 缓存键前缀
@@ -41,13 +43,15 @@ public class FlowEngineService : IFlowEngine
         IEnumerable<INodeHandler> handlers,
         IMemoryCache cache,
         ILogger<FlowEngineService> logger,
-        IServiceScopeFactory scopeFactory)
+        IServiceScopeFactory scopeFactory,
+        IBackgroundTaskQueue taskQueue)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _handlers = handlers.ToDictionary(h => h.NodeType);
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
+        _taskQueue = taskQueue ?? throw new ArgumentNullException(nameof(taskQueue));
     }
 
     /// <summary>
@@ -60,7 +64,7 @@ public class FlowEngineService : IFlowEngine
             return cached;
 
         var query = _db.FlowTemplates
-            .Include(t => t.Nodes!.OrderBy(n => n.StepOrder))
+            .Include(t => t.Nodes!.Where(n => !n.IsDeleted).OrderBy(n => n.StepOrder))
             .Where(t => t.Category == requestType && t.Phase == phase && t.IsActive);
 
         var template = await query
@@ -88,8 +92,9 @@ public class FlowEngineService : IFlowEngine
     /// </summary>
     public async Task<WcsResult> ExecuteAsync(FlowTemplate template, FlowContext context)
     {
+        context.FlowCategory = template.Category;
         var instance = await CreateInstanceAsync(template, context);
-        var nodes = template.Nodes!.Where(n => n.IsEnabled).OrderBy(n => n.StepOrder).ToList();
+        var nodes = template.Nodes!.Where(n => n.IsEnabled && !n.IsDeleted).OrderBy(n => n.StepOrder).ToList();
         var nodeLogs = new List<FlowNodeLog>();
 
         WcsResult? result = null;
@@ -185,7 +190,10 @@ public class FlowEngineService : IFlowEngine
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "[FlowEngine] 最终 SaveChanges 失败: {Message}", ex.Message);
+                _logger.LogError(ex, "[FlowEngine] 请求阶段最终 SaveChanges 失败: {Message}", ex.Message);
+                instance.Status = "Failed";
+                instance.ErrorMsg = ex.Message;
+                result = ApiResultHelper.WcsFail("服务器内部错误", ResultCodeTypes.程序异常, -1);
             }
             result = ApiResultHelper.WcsSuccess("处理成功", ResultCodeTypes.一, 1);
         }
@@ -193,7 +201,7 @@ public class FlowEngineService : IFlowEngine
         // ★ 异步保存实例最终状态 + 节点日志（不影响主流程性能）
         var completedTime = DateTime.Now;
         var instanceId = instance.Id;
-        _ = Task.Run(() => SaveFlowDataAsync(instanceId, finalStatus, completedTime, finalErrorMsg, nodeLogs));
+        _ = _taskQueue.QueueAsync(_ => SaveFlowDataAsync(instanceId, finalStatus, completedTime, finalErrorMsg, nodeLogs));
 
         return result;
     }
@@ -201,40 +209,55 @@ public class FlowEngineService : IFlowEngine
     /// <summary>
     /// 执行流程（任务完成阶段，无返回值）
     /// </summary>
+    /// <remarks>
+    /// 两阶段执行：
+    /// Phase 1（事务内）：常规节点（!IsPostTransaction）
+    /// Phase 2（事务外）：事务后节点（IsPostTransaction）— MES 上传、杭可通知等外部调用
+    /// </remarks>
     public async Task ExecuteCompletionAsync(FlowTemplate template, FlowContext context)
     {
+        context.FlowCategory = template.Category;
+        CompletionLogData logData;
+
+        // ★ Phase 1：事务内执行常规节点
         await using var transaction = await context.Db.Database.BeginTransactionAsync();
         try
         {
-            var logData = await ExecuteCompletionCoreAsync(template, context);
+            logData = await ExecuteCompletionNodesAsync(template, context, postTransactionOnly: false);
             await transaction.CommitAsync();
 
             // ★ Commit 成功后才异步保存日志（避免 Rollback 时保存孤儿日志）
-            _ = Task.Run(() => SaveFlowDataAsync(
+            _ = _taskQueue.QueueAsync(_ => SaveFlowDataAsync(
                 logData.InstanceId, logData.Status, logData.CompletedTime, logData.ErrorMsg, logData.Logs));
         }
         catch
         {
             await transaction.RollbackAsync();
-            throw;
+            throw; // 事务失败不执行 Phase 2
         }
+
+        // ★ Phase 2：事务外执行事务后节点（仅当 Phase 1 commit 成功时）
+        await ExecutePostTransactionNodesAsync(template, context, logData);
     }
 
     /// <summary>
-    /// 完成阶段核心逻辑（不含事务管理、不含异步日志保存）
+    /// 完成阶段节点执行逻辑（支持按 IsPostTransaction 过滤）
     /// </summary>
-    private async Task<CompletionLogData> ExecuteCompletionCoreAsync(FlowTemplate template, FlowContext context)
+    private async Task<CompletionLogData> ExecuteCompletionNodesAsync(FlowTemplate template, FlowContext context, bool postTransactionOnly)
     {
         var instance = await CreateInstanceAsync(template, context);
-        var nodes = template.Nodes!.Where(n => n.IsEnabled).OrderBy(n => n.StepOrder).ToList();
+        var nodes = template.Nodes!
+            .Where(n => n.IsEnabled && !n.IsDeleted && n.IsPostTransaction == postTransactionOnly)
+            .OrderBy(n => n.StepOrder)
+            .ToList();
         var nodeLogs = new List<FlowNodeLog>();
 
         foreach (var node in nodes)
         {
             instance.CurrentNodeOrder = node.StepOrder;
 
-            _logger.LogInformation("[FlowEngine] 完成阶段执行节点: Order={Order}, Type={Type}, Name={Name}",
-                node.StepOrder, node.NodeType, node.NodeName);
+            _logger.LogInformation("[FlowEngine] {Phase}执行节点: Order={Order}, Type={Type}, Name={Name}",
+                postTransactionOnly ? "事务后" : "完成阶段", node.StepOrder, node.NodeType, node.NodeName);
 
             if (!string.IsNullOrEmpty(node.SkipCondition))
             {
@@ -253,8 +276,8 @@ public class FlowEngineService : IFlowEngine
             {
                 var nodeResult = await handler.ExecuteAsync(context, node.ConfigJson);
 
-                _logger.LogInformation("[FlowEngine] 完成阶段节点 {Type} 完成: Success={Success}, Skipped={Skipped}, Msg={Msg}",
-                    node.NodeType, nodeResult.Success, nodeResult.Skipped, nodeResult.Message);
+                _logger.LogInformation("[FlowEngine] {Phase}节点 {Type} 完成: Success={Success}, Skipped={Skipped}, Msg={Msg}",
+                    postTransactionOnly ? "事务后" : "完成阶段", node.NodeType, nodeResult.Success, nodeResult.Skipped, nodeResult.Message);
 
                 if (nodeResult.Output != null)
                     context.Merge(nodeResult.Output);
@@ -273,13 +296,14 @@ public class FlowEngineService : IFlowEngine
                 {
                     instance.Status = "Failed";
                     instance.ErrorMsg = nodeResult.Message;
-                    _logger.LogError("[FlowEngine] 完成阶段节点 {NodeType} 失败: {Message}", node.NodeType, nodeResult.Message);
+                    _logger.LogError("[FlowEngine] {Phase}节点 {NodeType} 失败: {Message}",
+                        postTransactionOnly ? "事务后" : "完成阶段", node.NodeType, nodeResult.Message);
                     if (node.OnFailure == "Skip") continue;
                     break;
                 }
 
-                // 事务断点
-                if (node.IsTransactionBoundary)
+                // 事务断点（仅事务内节点生效）
+                if (!postTransactionOnly && node.IsTransactionBoundary)
                 {
                     await context.Db.SaveChangesAsync();
                 }
@@ -289,7 +313,8 @@ public class FlowEngineService : IFlowEngine
             catch (Exception ex)
             {
                 sw.Stop();
-                _logger.LogError(ex, "[FlowEngine] 完成阶段节点 {NodeType} 异常: {Message}", node.NodeType, ex.Message);
+                _logger.LogError(ex, "[FlowEngine] {Phase}节点 {NodeType} 异常: {Message}",
+                    postTransactionOnly ? "事务后" : "完成阶段", node.NodeType, ex.Message);
                 nodeLogs.Add(CreateNodeLog(instance.Id, node, "Failed", errorMsg: ex.Message, durationMs: sw.ElapsedMilliseconds));
                 instance.Status = "Failed";
                 instance.ErrorMsg = ex.Message;
@@ -297,20 +322,81 @@ public class FlowEngineService : IFlowEngine
             }
         }
 
-        // ★ 最终 SaveChanges：持久化最后一个事务断点之后所有节点的修改
-        try
+        // ★ 最终 SaveChanges（仅事务内节点阶段执行）
+        if (!postTransactionOnly)
         {
-            await context.Db.SaveChangesAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[FlowEngine] 完成阶段最终 SaveChanges 失败: {Message}", ex.Message);
+            try
+            {
+                await context.Db.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[FlowEngine] 完成阶段最终 SaveChanges 失败: {Message}", ex.Message);
+                instance.Status = "Failed";
+                instance.ErrorMsg = ex.Message;
+                throw; // 让 ExecuteCompletionAsync 触发事务回滚
+            }
         }
 
         if (instance.Status != "Failed")
             instance.Status = "Completed";
 
         return new CompletionLogData(instance.Id, instance.Status, DateTime.Now, instance.ErrorMsg, nodeLogs);
+    }
+
+    /// <summary>
+    /// 事务后节点执行（Phase 2）— 每个 Try-Catch 独立，永不向上抛异常
+    /// </summary>
+    private async Task ExecutePostTransactionNodesAsync(FlowTemplate template, FlowContext context, CompletionLogData logData)
+    {
+        var postNodes = template.Nodes!
+            .Where(n => n.IsEnabled && n.IsPostTransaction)
+            .OrderBy(n => n.StepOrder)
+            .ToList();
+
+        if (postNodes.Count == 0) return;
+
+        var postNodeLogs = new List<FlowNodeLog>();
+
+        foreach (var node in postNodes)
+        {
+            if (!_handlers.TryGetValue(node.NodeType, out var handler))
+            {
+                _logger.LogWarning("[FlowEngine] 事务后节点未注册: {NodeType}", node.NodeType);
+                postNodeLogs.Add(CreateNodeLog(logData.InstanceId, node, "Skipped", "未注册的节点类型"));
+                continue;
+            }
+
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                var nodeResult = await handler.ExecuteAsync(context, node.ConfigJson);
+
+                _logger.LogInformation("[FlowEngine] 事务后节点 {Type} 完成: Success={Success}, Skipped={Skipped}, Msg={Msg}",
+                    node.NodeType, nodeResult.Success, nodeResult.Skipped, nodeResult.Message);
+
+                if (nodeResult.Output != null)
+                    context.Merge(nodeResult.Output);
+
+                sw.Stop();
+                postNodeLogs.Add(CreateNodeLog(logData.InstanceId, node, nodeResult.Skipped ? "Skipped" : "Success",
+                    durationMs: sw.ElapsedMilliseconds));
+            }
+            catch (Exception ex)
+            {
+                sw.Stop();
+                _logger.LogError(ex, "[FlowEngine] 事务后节点 {NodeType} 异常（不影响主流程）: {Message}",
+                    node.NodeType, ex.Message);
+                postNodeLogs.Add(CreateNodeLog(logData.InstanceId, node, "Failed", errorMsg: ex.Message, durationMs: sw.ElapsedMilliseconds));
+            }
+        }
+
+        // ★ 追加异步保存事务后节点日志
+        if (postNodeLogs.Count > 0)
+        {
+            _ = _taskQueue.QueueAsync(_ => SaveFlowDataAsync(
+                logData.InstanceId, logData.Status, logData.CompletedTime, logData.ErrorMsg, postNodeLogs));
+        }
     }
 
     /// <summary>
