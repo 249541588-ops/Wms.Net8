@@ -473,12 +473,12 @@ public partial class UnitloadsController : ControllerBase
     /// </summary>
     [HttpPut("{id:int}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public Result Update(int id, [FromBody] UpdateUnitloadRequest request)
+    public async Task<Result> Update(int id, [FromBody] UpdateUnitloadRequest request)
     {
         try
         {
             request.UnitloadId = id;
-            return _unitloadService.UpdateUnitload(request);
+            return await _unitloadService.UpdateUnitload(request);
         }
         catch (Exception ex)
         {
@@ -495,9 +495,9 @@ public partial class UnitloadsController : ControllerBase
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public Result Create([FromBody] UnitloadRequest request)
+    public async Task<Result> Create([FromBody] UnitloadRequest request)
     {
-       return _unitloadService.CreateUnitloadManual(request);
+       return await _unitloadService.CreateUnitloadManual(request);
     }
 
     /// <summary>
@@ -522,9 +522,9 @@ public partial class UnitloadsController : ControllerBase
     [HttpDelete("{id:int}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public Result Delete(int id)
+    public async Task<Result> Delete(int id)
     {
-        return _unitloadService.Delete(id);
+        return await _unitloadService.Delete(id);
     }
 
     /// <summary>
@@ -535,9 +535,9 @@ public partial class UnitloadsController : ControllerBase
     [HttpPost("{id:int}/archive")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public Result Archive(int id, string? modifiedBy = null)
+    public async Task<Result> Archive(int id, string? modifiedBy = null)
     {
-        return _unitloadService.Archive(id, modifiedBy);
+        return await _unitloadService.Archive(id, modifiedBy);
     }
 
     /// <summary>
@@ -548,9 +548,9 @@ public partial class UnitloadsController : ControllerBase
     [HttpPost("{id:int}/recover")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public Result Recover(int id, string? modifiedBy = null)
+    public async Task<Result> Recover(int id, string? modifiedBy = null)
     {
-        return _unitloadService.Recover(id, modifiedBy);
+        return await _unitloadService.Recover(id, modifiedBy);
     }
 
 

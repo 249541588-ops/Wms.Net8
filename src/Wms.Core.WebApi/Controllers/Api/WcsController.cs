@@ -85,11 +85,11 @@ public partial class WcsController : ControllerBase
     [HttpPost("AutoBindingPlate")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public WcsResult AutoBindingPlate([FromBody] WcsRequest request)
+    public async Task<WcsResult> AutoBindingPlate([FromBody] WcsRequest request)
     {
         try
         {
-            var result = _unitloadService.CreateUnitloadAutomatic(request);
+            var result = await _unitloadService.CreateUnitloadAutomatic(request);
             if (result.IsSuccess)
             {
                 return ApiResultHelper.WcsSuccess($"成功", ResultCodeTypes.一, 1);

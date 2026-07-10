@@ -35,40 +35,40 @@ public interface IUnitloadService
     /// </summary>
     /// <param name="request"></param>
     /// <returns></returns>
-    Result CreateUnitloadManual(UnitloadRequest request);
+    Task<Result> CreateUnitloadManual(UnitloadRequest request);
 
     /// <summary>
     /// 自动创建货载
     /// </summary>
     /// <param name="request"></param>
     /// <returns></returns>
-    Result CreateUnitloadAutomatic(WcsRequest request);
+    Task<Result> CreateUnitloadAutomatic(WcsRequest request);
 
     /// <summary>
     /// 删除
     /// </summary>
     /// <param name="unitloadId"></param>
     /// <returns></returns>
-    Result Delete(int unitloadId);
+    Task<Result> Delete(int unitloadId);
 
     /// <summary>
     /// 归档
     /// </summary>
     /// <param name="unitloadId"></param>
     /// <returns></returns>
-    Result Archive(int unitloadId, string? modifiedBy = null);
+    Task<Result> Archive(int unitloadId, string? modifiedBy = null);
 
     /// <summary>
     /// 还原
     /// </summary>
     /// <param name="unitloadId"></param>
     /// <returns></returns>
-    Result Recover(int unitloadId, string? modifiedBy = null);
+    Task<Result> Recover(int unitloadId, string? modifiedBy = null);
 
     /// <summary>
     /// 更新货载（条码明细 + 可选容器编码）
     /// </summary>
-    Result UpdateUnitload(UpdateUnitloadRequest request);
+    Task<Result> UpdateUnitload(UpdateUnitloadRequest request);
 
     /// <summary>
     /// 添加托盘操作日志

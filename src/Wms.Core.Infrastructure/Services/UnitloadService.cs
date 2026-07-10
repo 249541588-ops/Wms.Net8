@@ -93,7 +93,7 @@ public class UnitloadService : IUnitloadService
     /// <param name="request"></param>
     /// <returns></returns>
     /// <exception cref="NotImplementedException"></exception>
-    public Result CreateUnitloadManual(UnitloadRequest request)
+    public async Task<Result> CreateUnitloadManual(UnitloadRequest request)
     {
         // 1.参数非空验证
         if (request == null)
@@ -111,7 +111,7 @@ public class UnitloadService : IUnitloadService
         if (request.Items == null || request.Items.Count == 0)
             return Result.Fail("电芯集合不能为空");
 
-        using var transaction = _db.Database.BeginTransaction();
+        await using var transaction = await _db.Database.BeginTransactionAsync();
 
         try
         {
@@ -335,13 +335,13 @@ public class UnitloadService : IUnitloadService
             AddUnitloadOp(containerCode, UnitloadOps_Enum.OpType.人工.ToString(), UnitloadOps_Enum.Direction.入库.ToString(), createdBy: request.CreatedBy);
 
             _db.SaveChanges();
-            transaction.Commit();
+            await transaction.CommitAsync();
 
             return Result<Unitload>.Success(unitload, "创建成功");
         }
         catch (Exception ex)
         {
-            transaction.Rollback();
+            await transaction.RollbackAsync();
             _logger.LogError(ex, "创建货载失败: {Message}", ex.Message);
             return Result.Fail("操作失败");
         }
@@ -350,7 +350,7 @@ public class UnitloadService : IUnitloadService
     /// <summary>
     /// 更新货载（条码明细 + 可选容器编码）
     /// </summary>
-    public Result UpdateUnitload(UpdateUnitloadRequest request)
+    public async Task<Result> UpdateUnitload(UpdateUnitloadRequest request)
     {
         if (request == null)
             return Result.Fail("请求参数不能为空");
@@ -358,7 +358,7 @@ public class UnitloadService : IUnitloadService
         if (request.UnitloadItems == null || request.UnitloadItems.Count == 0)
             return Result.Fail("物料明细不能为空");
 
-        using var transaction = _db.Database.BeginTransaction();
+        await using var transaction = await _db.Database.BeginTransactionAsync();
 
         try
         {
@@ -531,13 +531,13 @@ public class UnitloadService : IUnitloadService
             unitload.HasMsgError = null;
 
             _db.SaveChanges();
-            transaction.Commit();
+            await transaction.CommitAsync();
 
             return Result<Unitload>.Success(unitload, "更新成功");
         }
         catch (Exception ex)
         {
-            transaction.Rollback();
+            await transaction.RollbackAsync();
             _logger.LogError(ex, "更新货载失败: {Message}", ex.Message);
             return Result.Fail("操作失败");
         }
@@ -549,7 +549,7 @@ public class UnitloadService : IUnitloadService
     /// <param name="request"></param>
     /// <returns></returns>
     /// <exception cref="NotImplementedException"></exception>
-    public Result CreateUnitloadAutomatic(WcsRequest request)
+    public async Task<Result> CreateUnitloadAutomatic(WcsRequest request)
     {
         // 1.参数非空验证
         if (request == null)
@@ -564,7 +564,7 @@ public class UnitloadService : IUnitloadService
         if (string.IsNullOrWhiteSpace(request.LocationCode))
             return Result.Fail("位置编码不能为空");
 
-        using var transaction = _db.Database.BeginTransaction();
+        await using var transaction = await _db.Database.BeginTransactionAsync();
 
         try
         {
@@ -799,13 +799,13 @@ public class UnitloadService : IUnitloadService
             AddUnitloadOp(containerCode, UnitloadOps_Enum.OpType.自动.ToString(), UnitloadOps_Enum.Direction.入库.ToString(), createdBy: "WCS");
 
             _db.SaveChanges();
-            transaction.Commit();
+            await transaction.CommitAsync();
 
             return Result<Unitload>.Success(unitload, "创建成功");
         }
         catch (Exception ex)
         {
-            transaction.Rollback();
+            await transaction.RollbackAsync();
             _logger.LogError(ex, "创建货载失败: {Message}", ex.Message);
             return Result.Fail("操作失败");
         }
@@ -957,9 +957,9 @@ public class UnitloadService : IUnitloadService
     /// <param name="unitloadId"></param>
     /// <returns></returns>
     /// <exception cref="NotImplementedException"></exception>
-    public Result Archive(int unitloadId, string? modifiedBy = null)
+    public async Task<Result> Archive(int unitloadId, string? modifiedBy = null)
     {
-        using var transaction = _db.Database.BeginTransaction();
+        await using var transaction = await _db.Database.BeginTransactionAsync();
 
         try
         {
@@ -1005,12 +1005,12 @@ public class UnitloadService : IUnitloadService
             AddUnitloadOp(unitload.ContainerCode ?? "", UnitloadOps_Enum.OpType.人工.ToString(), UnitloadOps_Enum.Direction.其他.ToString(), "归档", modifiedBy);
 
             _db.SaveChanges();
-            transaction.Commit();
+            await transaction.CommitAsync();
             return Result.Success("归档成功");
         }
         catch (Exception ex)
         {
-            transaction.Rollback();
+            await transaction.RollbackAsync();
             _logger.LogError(ex, "归档失败: {Message}", ex.Message);
             return Result.Fail("操作失败");
         }
@@ -1021,9 +1021,9 @@ public class UnitloadService : IUnitloadService
     /// </summary>
     /// <param name="unitloadId"></param>
     /// <returns></returns>
-    public Result Recover(int unitloadId, string? modifiedBy = null)
+    public async Task<Result> Recover(int unitloadId, string? modifiedBy = null)
     {
-        using var transaction = _db.Database.BeginTransaction();
+        await using var transaction = await _db.Database.BeginTransactionAsync();
 
         try
         {
@@ -1154,12 +1154,12 @@ public class UnitloadService : IUnitloadService
             AddUnitloadOp(unitload.ContainerCode ?? "", UnitloadOps_Enum.OpType.人工.ToString(), UnitloadOps_Enum.Direction.其他.ToString(), "还原", modifiedBy);
 
             _db.SaveChanges();
-            transaction.Commit();
+            await transaction.CommitAsync();
             return Result.Success("还原成功");
         }
         catch (Exception ex)
         {
-            transaction.Rollback();
+            await transaction.RollbackAsync();
             _logger.LogError(ex, "还原失败: {Message}", ex.Message);
             return Result.Fail("操作失败");
         }
@@ -1170,9 +1170,9 @@ public class UnitloadService : IUnitloadService
     /// </summary>
     /// <param name="unitloadId"></param>
     /// <returns></returns>
-    public Result Delete(int unitloadId)
+    public async Task<Result> Delete(int unitloadId)
     {
-        using var transaction = _db.Database.BeginTransaction();
+        await using var transaction = await _db.Database.BeginTransactionAsync();
 
         try
         {
@@ -1218,12 +1218,12 @@ public class UnitloadService : IUnitloadService
             _db.Set<Unitload>().Remove(unitload);
             _db.SaveChanges();
 
-            transaction.Commit();
+            await transaction.CommitAsync();
             return Result.Success("删除成功");
         }
         catch (Exception ex)
         {
-            transaction.Rollback();
+            await transaction.RollbackAsync();
             _logger.LogError(ex, "删除失败: {Message}", ex.Message);
             return Result.Fail("操作失败");
         }

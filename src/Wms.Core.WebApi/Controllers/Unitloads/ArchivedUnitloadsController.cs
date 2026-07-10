@@ -418,9 +418,9 @@ public partial class ArchivedUnitloadsController : ControllerBase
     [HttpPost("{id:int}/recover")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public Result Recover(int id, string? modifiedBy = null)
+    public async Task<Result> Recover(int id, string? modifiedBy = null)
     {
-        return _unitloadService.Recover(id, modifiedBy);
+        return await _unitloadService.Recover(id, modifiedBy);
     }
 
 
