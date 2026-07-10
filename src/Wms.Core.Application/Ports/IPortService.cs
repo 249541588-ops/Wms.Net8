@@ -15,7 +15,7 @@ public interface IPortService
     /// <summary>
     /// 通过编码获取明细
     /// </summary>
-    Result CreatePort(CreatePortRequest No);
+    Task<Result> CreatePort(CreatePortRequest No);
 
 
 }
