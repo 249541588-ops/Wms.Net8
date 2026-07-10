@@ -19,6 +19,7 @@ using Wms.Core.Application.Ports;
 using Wms.Core.Domain.Utilities.Response;
 using Wms.Core.Engine;
 using Wms.Core.Infrastructure.Persistence;
+using Wms.Core.Domain.Abstractions;
 using Wms.Core.WebApi.Helpers;
 using Wms.Core.WebApi.Services.Wcs;
 using WcsReqHandler = Wms.Core.Application.Handlers.WcsRequest.IWcsRequestHandler;
@@ -179,6 +180,7 @@ public partial class WcsController : ControllerBase
             {
                 using var flowScope = _scopeFactory.CreateScope();
                 var flowDb = flowScope.ServiceProvider.GetRequiredService<WmsDbContext>();
+                var unitOfWork = flowScope.ServiceProvider.GetRequiredService<IUnitOfWork>();
                 // 确保起始位置被 DbContext 跟踪（避免 MemoryCache 缓存的游离实体问题）
                 var trackedLoc = await flowDb.Locations.FindAsync(loc.LocationId) ?? loc;
 
@@ -188,7 +190,7 @@ public partial class WcsController : ControllerBase
                 if (requestType == Cst.入库)
                 {
                     // ====== 标准入库：不循环，单次执行 ======
-                    var flowContext = new FlowContext(flowDb)
+                    var flowContext = new FlowContext(flowDb, unitOfWork)
                     {
                         Phase = Cst.PhaseRequest,
                         WcsRequest = requestInfo,
@@ -215,7 +217,7 @@ public partial class WcsController : ControllerBase
                 else if (requestType == Cst.叠盘)
                 {
                     // ====== 叠盘：不循环，单次执行（所有容器码一起处理）======
-                    var flowContext = new FlowContext(flowDb)
+                    var flowContext = new FlowContext(flowDb, unitOfWork)
                     {
                         Phase = Cst.PhaseRequest,
                         WcsRequest = requestInfo,
@@ -242,7 +244,7 @@ public partial class WcsController : ControllerBase
                 else if (requestType == Cst.排废)
                 {
                     // ====== 排废验证：单次执行，所有容器码一起处理 ======
-                    var flowContext = new FlowContext(flowDb)
+                    var flowContext = new FlowContext(flowDb, unitOfWork)
                     {
                         Phase = Cst.PhaseRequest,
                         WcsRequest = requestInfo,
@@ -272,7 +274,7 @@ public partial class WcsController : ControllerBase
                 else if (requestType == Cst.排废更新)
                 {
                     // ====== 排废完成：单次执行，所有容器码一起处理 ======
-                    var flowContext = new FlowContext(flowDb)
+                    var flowContext = new FlowContext(flowDb, unitOfWork)
                     {
                         Phase = Cst.PhaseRequest,
                         WcsRequest = requestInfo,
@@ -310,7 +312,7 @@ public partial class WcsController : ControllerBase
                     {
                         if (string.IsNullOrWhiteSpace(cc)) continue;
 
-                        var flowContext = new FlowContext(flowDb)
+                        var flowContext = new FlowContext(flowDb, unitOfWork)
                         {
                             Phase = Cst.PhaseRequest,
                             WcsRequest = requestInfo,

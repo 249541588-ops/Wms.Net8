@@ -6,6 +6,7 @@ using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Domain.Enums;
 using Wms.Core.Engine;
 using Wms.Core.Infrastructure.Persistence;
+using Wms.Core.Application.Persistence;
 
 namespace Wms.Core.Engine.Nodes;
 
@@ -147,7 +148,7 @@ public class FindUnitloadHandler : INodeHandler
     /// <summary>
     /// 按容器码查找 Unitload（先按 ContainerCode 查，查不到再按 BoxCode 查）
     /// </summary>
-    private static async Task<Unitload?> FindUnitloadByCodeAsync(WmsDbContext db, string code)
+    private static async Task<Unitload?> FindUnitloadByCodeAsync(IFlowDbContext db, string code)
     {
         var unitload = await db.Unitloads.FirstOrDefaultAsync(u => u.ContainerCode == code);
         if (unitload == null)

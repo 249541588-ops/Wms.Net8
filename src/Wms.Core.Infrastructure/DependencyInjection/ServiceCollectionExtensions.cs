@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Wms.Core.Domain.Repositories;
 using Wms.Core.Domain.Services;
 using Wms.Core.Application.Ports;
+using Wms.Core.Application.Persistence;
+using Wms.Core.Domain.Abstractions;
 using Wms.Core.Domain.Factories;
 using Wms.Core.Domain.Entities.Flow;
 using Wms.Core.Infrastructure.Persistence;
@@ -33,6 +35,11 @@ public static class ServiceCollectionExtensions
         var connectionString = configuration.GetConnectionString("DefaultConnection");
         services.AddDbContextPool<WmsDbContext>(options =>
             options.UseSqlServer(connectionString), poolSize: 128);
+
+        // 暴露 WmsDbContext 的接口视图，供 FlowContext / 节点处理器 / 事务管理使用
+        // 同一 Scope 内 GetRequiredService<WmsDbContext> 返回同一实例，保证 FlowContext.Db 与 UnitOfWork 指向同一 DbContext
+        services.AddScoped<IFlowDbContext>(sp => sp.GetRequiredService<WmsDbContext>());
+        services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<WmsDbContext>());
 
         // 注册独立日志数据库上下文（InterfaceLogs，避免日志增长影响主库）
         var logConnectionString = configuration.GetConnectionString("LogConnection");

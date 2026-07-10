@@ -11,6 +11,7 @@ using Wms.Core.Domain.Entities.Transport;
 using Wms.Core.Domain.Entities.Warehouse;
 using Wms.Core.Domain.Tasks;
 using Wms.Core.Infrastructure.Persistence;
+using Wms.Core.Application.Persistence;
 
 namespace Wms.Core.Infrastructure.Handlers.WcsRequest;
 
@@ -19,7 +20,7 @@ namespace Wms.Core.Infrastructure.Handlers.WcsRequest;
 /// </summary>
 public class LocationAllocator
 {
-    private readonly WmsDbContext _db;
+    private readonly IFlowDbContext _db;
     private readonly LocationAllocationEngine _engine;
     private readonly ILogger<LocationAllocator> _logger;
 
@@ -31,7 +32,7 @@ public class LocationAllocator
     /// <param name="logger"></param>
     /// <exception cref="ArgumentNullException"></exception>
     public LocationAllocator(
-        WmsDbContext db,
+        IFlowDbContext db,
         LocationAllocationEngine engine,
         ILogger<LocationAllocator> logger)
     {
@@ -247,7 +248,7 @@ public class LocationAllocator
     /// <param name="transTask">要归档的任务</param>
     /// <param name="actualLocationCode">WCS 实际到达库位编码（可选）</param>
     /// <param name="isCancelled">是否已取消/拒绝</param>
-    public static void ArchiveTask(WmsDbContext db, TransTask transTask, string? actualLocationCode = null, bool isCancelled = false)
+    public static void ArchiveTask(IFlowDbContext db, TransTask transTask, string? actualLocationCode = null, bool isCancelled = false)
     {
         var archived = new ArchivedTask
         {
@@ -307,7 +308,7 @@ public class LocationAllocator
     /// <summary>
     /// 添加 UnitloadOp 操作流水记录
     /// </summary>
-    public static void AddUnitloadOp(WmsDbContext db, string containerCode, string opType, string direction, string? comment = null, string? createdBy = null)
+    public static void AddUnitloadOp(IFlowDbContext db, string containerCode, string opType, string direction, string? comment = null, string? createdBy = null)
     {
         var now = DateTime.Now;
         db.UnitloadOps.Add(new UnitloadOp
@@ -328,7 +329,7 @@ public class LocationAllocator
     /// <remarks>
     /// 纯数据操作，不含验证、事务、UnitloadOp。调用方负责外围控制。
     /// </remarks>
-    public static void ArchiveUnitload(WmsDbContext db, Unitload unitload, string archiveReason, string comment)
+    public static void ArchiveUnitload(IFlowDbContext db, Unitload unitload, string archiveReason, string comment)
     {
         var now = DateTime.Now;
 
@@ -446,7 +447,7 @@ public class LocationAllocator
     /// <remarks>
     /// 纯数据操作，不含验证、事务、UnitloadOp。调用方负责外围控制。
     /// </remarks>
-    public static async Task ArchiveUnitloadAsync(WmsDbContext db, Unitload unitload, string archiveReason, string comment)
+    public static async Task ArchiveUnitloadAsync(IFlowDbContext db, Unitload unitload, string archiveReason, string comment)
     {
         var now = DateTime.Now;
 
@@ -562,7 +563,7 @@ public class LocationAllocator
     /// 归档 Unitload（使用 Items 快照副本，用于叠盘场景）
     /// 叠盘时 source 的 Items 已转移到 target，导航属性已清空，需通过快照副本归档
     /// </summary>
-    public static async Task ArchiveUnitloadAsync(WmsDbContext db, Unitload unitload, string archiveReason, string comment,
+    public static async Task ArchiveUnitloadAsync(IFlowDbContext db, Unitload unitload, string archiveReason, string comment,
         List<dynamic> itemsSnapshot)
     {
         var now = DateTime.Now;
@@ -672,7 +673,7 @@ public class LocationAllocator
     /// <param name="unitload">要清理的托盘（需已加载 UnitloadItems + Material 导航属性）</param>
     /// <param name="archiveReason">归档原因（记录到 ArchivedUnitload.ArchiveReason）</param>
     /// <returns>true 表示 Unitload 已被删除；false 表示仍存活</returns>
-    public static async Task<bool> CleanupEmptyTrayItemsAsync(WmsDbContext db, Unitload unitload, string archiveReason)
+    public static async Task<bool> CleanupEmptyTrayItemsAsync(IFlowDbContext db, Unitload unitload, string archiveReason)
     {
         if (unitload?.UnitloadItems == null || unitload.UnitloadItems.Count == 0)
             return false;
@@ -740,7 +741,7 @@ public class LocationAllocator
     /// 归档原 Unitload
     /// </summary>
     /// <remarks>异步方法，调用方需 await</remarks>
-    public static async Task SplitUnitloadAsync(WmsDbContext db, Unitload unitload, int targetLocationId)
+    public static async Task SplitUnitloadAsync(IFlowDbContext db, Unitload unitload, int targetLocationId)
     {
         var now = DateTime.Now;
         var sourceUnitloadId = unitload.UnitloadId;
@@ -859,7 +860,7 @@ public class LocationAllocator
     /// 异步方法，调用方需 await。
     /// 仅执行数据合并和归档，不含验证、事务、UnitloadOp。调用方负责外围控制。
     /// </remarks>
-    public static async Task MergeUnitloadsAsync(WmsDbContext db, Unitload targetUnitload, Unitload sourceUnitload, string archiveReason = "叠盘")
+    public static async Task MergeUnitloadsAsync(IFlowDbContext db, Unitload targetUnitload, Unitload sourceUnitload, string archiveReason = "叠盘")
     {
         var sourceUnitloadId = sourceUnitload.UnitloadId;
 
@@ -941,7 +942,7 @@ public static class TaskCodeGenerator
     /// 使用 SQL Server OUTPUT 子句原子自增，并发安全。
     /// SeqName 格式：TaskCode_260604，每天自动创建新记录。
     /// </remarks>
-    public static async Task<string> GenerateAsync(WmsDbContext db)
+    public static async Task<string> GenerateAsync(IFlowDbContext db)
     {
         var today = DateTime.Now.ToString("yyMMdd");
         var seqName = $"TaskCode_{today}";

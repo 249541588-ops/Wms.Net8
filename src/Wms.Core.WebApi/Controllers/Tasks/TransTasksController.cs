@@ -11,6 +11,7 @@ using Wms.Core.Application.Ports;
 using Wms.Core.Domain.Repositories;
 using Wms.Core.Engine;
 using Wms.Core.Infrastructure.Persistence;
+using Wms.Core.Domain.Abstractions;
 
 namespace Wms.Core.WebApi.Controllers.Tasks;
 
@@ -27,6 +28,7 @@ public class TransTasksController : ControllerBase
 {
     private readonly IRepository<TransTask, int> _repository;
     private readonly WmsDbContext _db;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ICtaskDbService _ctaskDb;
     private readonly IEnumerable<ITaskCompletionHandler> _completionHandlers;
     private readonly IFlowEngine _flowEngine;
@@ -48,10 +50,12 @@ public class TransTasksController : ControllerBase
         ICtaskDbService ctaskDb,
         IEnumerable<ITaskCompletionHandler> completionHandlers,
         IFlowEngine flowEngine,
-        ILogger<TransTasksController> logger)
+        ILogger<TransTasksController> logger,
+        IUnitOfWork unitOfWork)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _db = db ?? throw new ArgumentNullException(nameof(db));
+        _unitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
         _ctaskDb = ctaskDb ?? throw new ArgumentNullException(nameof(ctaskDb));
         _completionHandlers = completionHandlers ?? throw new ArgumentNullException(nameof(completionHandlers));
         _flowEngine = flowEngine ?? throw new ArgumentNullException(nameof(flowEngine));
@@ -350,7 +354,7 @@ public class TransTasksController : ControllerBase
                 transTask.TaskType ?? "", Cst.PhaseCompletion);
             if (template != null)
             {
-                var flowContext = new FlowContext(_db)
+                var flowContext = new FlowContext(_db, _unitOfWork)
                 {
                     Phase = Cst.PhaseCompletion,
                     Unitload = transTask.Unitload,

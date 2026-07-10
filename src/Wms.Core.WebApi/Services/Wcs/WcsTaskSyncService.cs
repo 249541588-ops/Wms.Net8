@@ -6,6 +6,7 @@ using Wms.Core.Domain.Constants;
 using Wms.Core.Application.Ports;
 using Wms.Core.Engine;
 using Wms.Core.Infrastructure.Persistence;
+using Wms.Core.Domain.Abstractions;
 using Wms.Core.WebApi.Hubs;
 
 namespace Wms.Core.WebApi.Services.Wcs;
@@ -124,6 +125,7 @@ public class WcsTaskSyncService
         // 为每个任务创建独立的 DbContext scope，避免共享 DbContext 状态污染
         using var taskScope = _scopeFactory.CreateScope();
         var taskDb = taskScope.ServiceProvider.GetRequiredService<WmsDbContext>();
+        var unitOfWork = taskScope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
         var transTask = await taskDb.TransTasks
             .Include(t => t.Unitload).ThenInclude(u => u.UnitloadItems).ThenInclude(ui => ui.Material)
@@ -151,7 +153,7 @@ public class WcsTaskSyncService
             {
                 try
                 {
-                    var flowContext = new FlowContext(taskDb)
+                    var flowContext = new FlowContext(taskDb, unitOfWork)
                     {
                         Phase = Cst.PhaseCompletion,
                         Unitload = transTask.Unitload,

@@ -12,6 +12,8 @@ using Wms.Core.Domain.Entities.Archive;
 using Wms.Core.Domain.Entities.System;
 using Wms.Core.Domain.Entities.Flow;
 using Wms.Core.Domain.Interfaces;
+using Wms.Core.Application.Persistence;
+using Wms.Core.Domain.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 
@@ -20,7 +22,7 @@ namespace Wms.Core.Infrastructure.Persistence;
 /// <summary>
 /// WMS 智能仓储系统 EF Core 数据库上下文
 /// </summary>
-public class WmsDbContext : DbContext
+public class WmsDbContext : DbContext, IFlowDbContext, IUnitOfWork
 {
     /// <summary>
     /// 初始化 WmsDbContext
@@ -166,4 +168,17 @@ public class WmsDbContext : DbContext
 
         return base.SaveChangesAsync(cancellationToken);
     }
+
+    // IUnitOfWork 显式实现：统一事务管理抽象（供 FlowContext 分段事务使用）
+    Task IUnitOfWork.BeginTransactionAsync(CancellationToken cancellationToken)
+        => Database.BeginTransactionAsync(cancellationToken);
+
+    async Task IUnitOfWork.CommitAsync(CancellationToken cancellationToken)
+    {
+        await SaveChangesAsync(cancellationToken);
+        await Database.CommitTransactionAsync(cancellationToken);
+    }
+
+    Task IUnitOfWork.RollbackAsync(CancellationToken cancellationToken)
+        => Database.RollbackTransactionAsync(cancellationToken);
 }
