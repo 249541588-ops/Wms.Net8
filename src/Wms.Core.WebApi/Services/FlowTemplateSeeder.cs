@@ -148,7 +148,7 @@ public static class FlowTemplateSeeder
                 new() { NodeType = "AllocateLocation", NodeName = "分配货位", StepOrder = 6, IsEnabled = true, OnFailure = "Stop" },
                 new() { NodeType = "CreateTransTask", NodeName = "创建运输任务", StepOrder = 7, IsEnabled = true, OnFailure = "Stop", IsTransactionBoundary = true },
                 new() { NodeType = "UpdateUnitload", NodeName = "更新托盘状态", StepOrder = 8, IsEnabled = true, OnFailure = "Stop" },
-                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 9, IsEnabled = true, OnFailure = "Skip" },
+                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 9, IsEnabled = true, OnFailure = "Skip", IsTransactionBoundary = true },
                 new() { NodeType = "SendWcsTask", NodeName = "下发WCS", StepOrder = 10, IsEnabled = true, OnFailure = "Stop" },
             }
         });
@@ -199,7 +199,7 @@ public static class FlowTemplateSeeder
                 new() { NodeType = "AllocateLocation", NodeName = "分配货位", StepOrder = 6, IsEnabled = true, OnFailure = "Stop" },
                 new() { NodeType = "CreateTransTask", NodeName = "创建运输任务", StepOrder = 7, IsEnabled = true, OnFailure = "Stop", IsTransactionBoundary = true },
                 new() { NodeType = "UpdateUnitload", NodeName = "更新托盘状态", StepOrder = 8, IsEnabled = true, OnFailure = "Stop" },
-                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 9, IsEnabled = true, OnFailure = "Skip" },
+                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 9, IsEnabled = true, OnFailure = "Skip", IsTransactionBoundary = true },
                 new() { NodeType = "SendWcsTask", NodeName = "下发WCS", StepOrder = 10, IsEnabled = true, OnFailure = "Stop" },
             }
         });
@@ -247,7 +247,7 @@ public static class FlowTemplateSeeder
                 new() { NodeType = "CheckUnitloadStatus", NodeName = "检查托盘状态", StepOrder = 3, IsEnabled = true, OnFailure = "Stop" },
                 new() { NodeType = "CreateTransTask", NodeName = "创建运输任务", StepOrder = 4, IsEnabled = true, OnFailure = "Stop", IsTransactionBoundary = true },
                 new() { NodeType = "UpdateUnitload", NodeName = "更新托盘状态", StepOrder = 5, IsEnabled = true, OnFailure = "Stop" },
-                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 6, IsEnabled = true, OnFailure = "Skip" },
+                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 6, IsEnabled = true, OnFailure = "Skip", IsTransactionBoundary = true },
                 new() { NodeType = "SendWcsTask", NodeName = "下发WCS", StepOrder = 7, IsEnabled = true, OnFailure = "Stop" },
             }
         });
@@ -298,7 +298,7 @@ public static class FlowTemplateSeeder
                 new() { NodeType = "AllocateLocation", NodeName = "分配货位", StepOrder = 5, IsEnabled = true, OnFailure = "Stop" },
                 new() { NodeType = "CreateTransTask", NodeName = "创建运输任务", StepOrder = 6, IsEnabled = true, OnFailure = "Stop", IsTransactionBoundary = true },
                 new() { NodeType = "UpdateUnitload", NodeName = "更新托盘状态", StepOrder = 7, IsEnabled = true, OnFailure = "Stop" },
-                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 8, IsEnabled = true, OnFailure = "Skip" },
+                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 8, IsEnabled = true, OnFailure = "Skip", IsTransactionBoundary = true },
                 new() { NodeType = "SendWcsTask", NodeName = "下发WCS", StepOrder = 9, IsEnabled = true, OnFailure = "Stop" },
             }
         });

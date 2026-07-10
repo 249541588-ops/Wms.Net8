@@ -14,6 +14,7 @@ namespace Wms.Core.Engine.Nodes;
 /// <summary>
 /// 排废完成处理节点 — 删除 NG 电芯 + 级联清理空数据 + 注销空托盘
 /// 流程：验证容器 → 删除 NG Details → 级联删除空 Items/Unitloads → 杭可注销托盘 → 返回 NodeResult
+/// 事务由 FlowEngine 分段管理，本节点不再自建事务
 /// </summary>
 public class WasteDisposalCaptureNode : INodeHandler
 {
@@ -120,11 +121,9 @@ public class WasteDisposalCaptureNode : INodeHandler
                 containerCode, ngRemoved, emptyUnitloadIds.Contains(unitload.UnitloadId));
         }
 
-        // 事务：删除数据
+        // DB 删除操作（事务由 FlowEngine 管理，本节点不再自建事务）
         try
         {
-            await using var tx = await context.Db.Database.BeginTransactionAsync();
-
             // 按层级删除
             // 1. 先删子：NG UnitloadItemDetails
             if (ngDetailIds.Count > 0)
@@ -157,8 +156,8 @@ public class WasteDisposalCaptureNode : INodeHandler
                     context.Db.Set<Unitload>()
                         .Where(u => emptyUnitloadIds.Contains(u.UnitloadId)));
 
+            // SaveChanges 由 FlowEngine 的分段事务在 boundary 处统一提交
             await context.Db.SaveChangesAsync();
-            await tx.CommitAsync();
         }
         catch (Exception ex)
         {

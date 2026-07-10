@@ -11,7 +11,7 @@ namespace Wms.Core.Engine.Nodes;
 
 /// <summary>
 /// 叠盘合并节点 — 将多个来源托盘合并到目标托盘，归档来源，更新库位计数和操作流水
-/// 事务由本节点自行管理，确保合并/归档/库位更新的原子性
+/// 事务由 FlowEngine 分段管理，本节点不再自建事务
 /// </summary>
 public class MergeUnitloadsHandler : INodeHandler
 {
@@ -49,48 +49,38 @@ public class MergeUnitloadsHandler : INodeHandler
         _logger.LogInformation("[MergeUnitloads] 开始叠盘: 位置={Location}, target={Target}, sources=[{Sources}]",
             locationCode, targetCode, string.Join(",", sourceCodes));
 
-        // ★ 事务管理：确保合并/归档/库位更新的原子性
-        await using var tx = await context.Db.Database.BeginTransactionAsync();
-        try
+        // 事务由 FlowEngine 分段管理，本节点不再自建事务
+        // 循环合并：每个 source 的 Items 转移到 target，归档 source
+        foreach (var source in sources)
         {
-            // 循环合并：每个 source 的 Items 转移到 target，归档 source
-            foreach (var source in sources)
+            var sourceLocationId = source.LocationId;
+
+            await LocationAllocator.MergeUnitloadsAsync(context.Db, target, source, "WCS叠盘");
+
+            // 更新 source 原库位的 UnitloadCount
+            if (sourceLocationId.HasValue)
             {
-                var sourceLocationId = source.LocationId;
-
-                await LocationAllocator.MergeUnitloadsAsync(context.Db, target, source, "WCS叠盘");
-
-                // 更新 source 原库位的 UnitloadCount
-                if (sourceLocationId.HasValue)
-                {
-                    var sourceLocation = await context.Db.Locations.FindAsync(sourceLocationId.Value);
-                    if (sourceLocation != null)
-                        sourceLocation.UnitloadCount = Math.Max(0, sourceLocation.UnitloadCount - 1);
-                }
+                var sourceLocation = await context.Db.Locations.FindAsync(sourceLocationId.Value);
+                if (sourceLocation != null)
+                    sourceLocation.UnitloadCount = Math.Max(0, sourceLocation.UnitloadCount - 1);
             }
-
-            // 更新 target 的位置和到位时间
-            target.LocationId = context.StartLocation.LocationId;
-            target.CurrentLocationTime = DateTime.Now;
-
-            // 记录 UnitloadOp 操作流水
-            LocationAllocator.AddUnitloadOp(context.Db, targetCode,
-                UnitloadOps_Enum.OpType.自动.ToString(), UnitloadOps_Enum.Direction.叠盘.ToString(),
-                $"WCS叠盘: {string.Join(",", sourceCodes)} → {targetCode}");
-
-            // 刷完所有挂起修改，使 FlowEngine 最终 SaveChanges 为 no-op
-            await context.Db.SaveChangesAsync();
-            await tx.CommitAsync();
-
-            _logger.LogInformation("[MergeUnitloads] 叠盘完成: {Sources} → {Target}, 位置={Loc}",
-                string.Join(",", sourceCodes), targetCode, locationCode);
-
-            return NodeResult.Ok();
         }
-        catch
-        {
-            await tx.RollbackAsync();
-            throw;
-        }
+
+        // 更新 target 的位置和到位时间
+        target.LocationId = context.StartLocation.LocationId;
+        target.CurrentLocationTime = DateTime.Now;
+
+        // 记录 UnitloadOp 操作流水
+        LocationAllocator.AddUnitloadOp(context.Db, targetCode,
+            UnitloadOps_Enum.OpType.自动.ToString(), UnitloadOps_Enum.Direction.叠盘.ToString(),
+            $"WCS叠盘: {string.Join(",", sourceCodes)} → {targetCode}");
+
+        // SaveChanges 由 FlowEngine 的分段事务在 boundary 处统一提交
+        await context.Db.SaveChangesAsync();
+
+        _logger.LogInformation("[MergeUnitloads] 叠盘完成: {Sources} → {Target}, 位置={Loc}",
+            string.Join(",", sourceCodes), targetCode, locationCode);
+
+        return NodeResult.Ok();
     }
 }
