@@ -180,3 +180,10 @@ Thumbs.db
 # Rider
 .idea/
 *.sln.iml
+
+# Claude Code / planning tools
+.claude/
+nul
+task_plan.md
+findings.md
+progress.md

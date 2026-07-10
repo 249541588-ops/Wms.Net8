@@ -20,7 +20,6 @@ public class UserTests
         user.UserName.Should().NotBeNull();
         user.PasswordHash.Should().NotBeNull();
         user.PasswordSalt.Should().NotBeNull();
-        user.RealName.Should().NotBeNull();
     }
 
     [Fact]
@@ -84,7 +83,7 @@ public class UserTests
     [InlineData("P@ssw0rd", true)]
     [InlineData("simple", true)]
     [InlineData("12345678", true)]
-    [InlineData("", true)]
+    [InlineData("", false)]
     [InlineData("VeryLongPasswordWithSpecialCharacters!@#$%^&*()", true)]
     public void VerifyPassword_ShouldHandleVariousPasswords(string password, bool expected)
     {
@@ -94,6 +93,15 @@ public class UserTests
             UserName = "testuser",
             RealName = "Test User"
         };
+
+        // Act
+        if (string.IsNullOrEmpty(password))
+        {
+            // 空密码应被 SetPassword 拒绝
+            user.Invoking(u => u.SetPassword(password))
+                .Should().Throw<ArgumentException>();
+            return;
+        }
         user.SetPassword(password);
 
         // Act

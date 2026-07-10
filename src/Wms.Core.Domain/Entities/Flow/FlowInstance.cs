@@ -1,5 +1,6 @@
 using global::System.ComponentModel.DataAnnotations;
 using global::System.ComponentModel.DataAnnotations.Schema;
+using Wms.Core.Domain.Enums;
 using Wms.Core.Domain.Interfaces;
 
 namespace Wms.Core.Domain.Entities.Flow;
@@ -88,4 +89,20 @@ public class FlowInstance : IEntity<int>, IAuditable
     object IEntity.Id => Id;
 
     #endregion
+
+    /// <summary>
+    /// 获取强类型状态（从字符串 Status 解析）
+    /// </summary>
+    public FlowInstanceStatus GetStatus() => FlowStateMachine.Parse(Status);
+
+    /// <summary>
+    /// 安全转换状态（验证合法性后更新）
+    /// </summary>
+    public void TransitionTo(FlowInstanceStatus newStatus)
+    {
+        var current = GetStatus();
+        if (!FlowStateMachine.CanTransition(current, newStatus))
+            throw new InvalidOperationException($"非法状态转换：{current} → {newStatus}");
+        Status = FlowStateMachine.ToString(newStatus);
+    }
 }

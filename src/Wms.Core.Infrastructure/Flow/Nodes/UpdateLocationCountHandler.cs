@@ -27,9 +27,8 @@ public class UpdateLocationCountHandler : INodeHandler
     {
         var startLocation = context.StartLocation;
         var targetLocation = context.TargetLocation;
-        // 通过起始库位的 RequestType 判断业务方向
-        var requestType = startLocation?.RequestType ?? Cst.入库;
-        var isInbound = requestType == Cst.入库 || requestType == Cst.入库双叉;
+        // 通过流程分类判断业务方向
+        var isInbound = context.FlowCategory == Cst.入库 || context.FlowCategory == Cst.入库双叉;
         var isCompletion = context.Phase == Cst.PhaseCompletion;
 
         if (isInbound)

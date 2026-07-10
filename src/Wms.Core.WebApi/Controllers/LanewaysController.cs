@@ -91,7 +91,7 @@ public partial class LanewaysController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -113,7 +113,7 @@ public partial class LanewaysController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取巷道列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -141,7 +141,7 @@ public partial class LanewaysController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取对象失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -184,7 +184,7 @@ public partial class LanewaysController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "创建失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -232,7 +232,7 @@ public partial class LanewaysController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "更新失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -260,7 +260,7 @@ public partial class LanewaysController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "删除失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 

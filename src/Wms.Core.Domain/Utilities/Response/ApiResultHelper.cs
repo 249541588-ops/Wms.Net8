@@ -47,42 +47,64 @@ namespace Wms.Core.Domain.Utilities.Response
     }
 
     /// <summary>
-    /// 
+    /// Mes 结果集
     /// </summary>
-    public class ApiResultMes
+    public class MesResult
     {
         /// <summary>
         /// 成功标识
         /// </summary>
         public bool status { get; set; }
+
+        public string result { get; set; }
+
+        public string msg { get; set; }
+        /// <summary>
+        /// 查询状态码 备用
+        /// </summary>
+        public string code { get; set; }
+        /// <summary>
+        /// 提示信息
+        /// </summary>
+        public string message { get; set; }
+        /// <summary>
+        /// 数据集合
+        /// </summary>
+        public object data { get; set; }
+
+        public string traceID { get; set; }
+
+        public string errorMsg { get; set; }
+    }
+
+    /// <summary>
+    /// 杭可 结果集
+    /// </summary>
+    public class ResultInfo
+    {
         /// <summary>
         /// 
         /// </summary>
-        public string? result { get; set; }
+        public ResultInfo()
+        {
+            ResultCode = -1;
+            ResultMessage = "初始化";
+        }
+
         /// <summary>
         /// 
         /// </summary>
-        public string? msg { get; set; }
+        public int ResultCode { get; set; }
+
         /// <summary>
         /// 
         /// </summary>
-        public string? code { get; set; }
+        public string? ResultMessage { get; set; }
+
         /// <summary>
         /// 
         /// </summary>
-        public string? message { get; set; }
-        /// <summary>
-        /// 
-        /// </summary>
-        public object? data { get; set; }
-        /// <summary>
-        /// 
-        /// </summary>
-        public string? traceID { get; set; }
-        /// <summary>
-        /// 
-        /// </summary>
-        public string? errorMsg { get; set; }
+        public object? ResultData { get; set; }
     }
 
     /// <summary>
@@ -98,7 +120,7 @@ namespace Wms.Core.Domain.Utilities.Response
         /// <param name="data"></param>
         /// <param name="token"></param>
         /// <returns></returns>
-        public static ApiResultMes PostMes(string url, string data, string token = "")
+        public static MesResult PostMes(string url, string data, string token = "")
         {
             var request = HttpWebRequest.Create(url) as HttpWebRequest;
             request.Timeout = 30 * 1000; //����30s�ĳ�ʱ
@@ -118,7 +140,7 @@ namespace Wms.Core.Domain.Utilities.Response
             postStream.Write(data2, 0, data2.Length);
             postStream.Close();
 
-            ApiResultMes apiResult = new ApiResultMes();
+            MesResult apiResult = new MesResult();
 
             try
             {
@@ -126,7 +148,7 @@ namespace Wms.Core.Domain.Utilities.Response
                 {
                     StreamReader reader = new StreamReader(res.GetResponseStream(), Encoding.UTF8);
                     string result = reader.ReadToEnd();
-                    apiResult = JsonSerializer.Deserialize<ApiResultMes>(result, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    apiResult = JsonSerializer.Deserialize<MesResult>(result, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 }
             }
             catch (Exception ex)

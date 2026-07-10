@@ -4,7 +4,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Wms.Core.Domain.Entities.System;
 using Wms.Core.Infrastructure.Persistence;
+using Wms.Core.Infrastructure.Security;
 using Wms.Core.WebApi.Services.Wcs;
+using Wms.Core.WebApi.Services;
 using SysBackgroundJob = Wms.Core.Domain.Entities.System.BackgroundJob;
 
 namespace Wms.Core.WebApi.Jobs;
@@ -30,7 +32,12 @@ public class JobDispatcher : IJobDispatcher
                 "wcs-task-sync",
                 "WCS 任务同步",
                 "轮询 ctask.wcs_tasks 表同步状态 + 补发未下发任务",
-                "*/30 * * * * *")
+                "*/30 * * * * *"),
+            ["data-cleanup"] = new InternalMethodInfo(
+                "data-cleanup",
+                "数据定时清理",
+                "清理归档数据、操作日志、接口日志、WCS历史任务等（保留天数可在 appsettings.json 配置）",
+                "0 0 2 * * *")
         };
 
         _internalHandlers = new Dictionary<string, Func<IServiceProvider, Task>>(StringComparer.OrdinalIgnoreCase)
@@ -40,6 +47,11 @@ public class JobDispatcher : IJobDispatcher
                 var syncService = sp.GetRequiredService<WcsTaskSyncService>();
                 await syncService.SyncStatusAsync();
                 await syncService.RetryUnsentTasksAsync();
+            },
+            ["data-cleanup"] = async sp =>
+            {
+                var cleanupService = sp.GetRequiredService<DataCleanupService>();
+                await cleanupService.CleanupAllAsync();
             }
         };
     }
@@ -100,28 +112,31 @@ public class JobDispatcher : IJobDispatcher
     }
 
     /// <summary>
-    /// HTTP API 调用（带安全限制）
+    /// HTTP API 调用（带安全限制）。
+    /// Q403 三层防御：
+    /// 1. URL 白名单（HttpCallSafety.IsValidHttpCallUrl）- 即使数据库被篡改也会拒绝
+    /// 2. Headers 黑名单（HttpCallSafety.IsForbiddenHeader）- 防止 Authorization/Cookie/Host/X-Forwarded-* 注入
+    /// 3. HttpClient 禁止重定向（在 HangfireExtensions 配置）- 防止 302 重定向到内网地址
     /// </summary>
     private async Task ExecuteHttpCallAsync(IServiceProvider sp, SysBackgroundJob job)
     {
         var url = job.ApiUrl ?? "";
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            _logger.LogWarning("[JobDispatcher] HTTP 任务未配置 API 地址, JobId={Id}", job.Id);
-            return;
-        }
 
-        // 安全校验：禁止绝对路径
-        if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-            url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
-            url.StartsWith("//"))
+        // 防御纵深：再次执行白名单校验（即使数据库被绕过/篡改）
+        if (!HttpCallSafety.IsValidHttpCallUrl(url, out var urlReason))
         {
-            _logger.LogWarning("[JobDispatcher] HTTP 任务使用绝对路径被拒绝: {Url}, JobId={Id}", url, job.Id);
+            _logger.LogWarning("[JobDispatcher] HTTP 任务 ApiUrl 校验失败: {Reason}, JobId={Id}, Url={Url}",
+                urlReason, job.Id, url);
             return;
         }
 
         var method = job.RequestType ?? "GET";
-        var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient();
+        var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient("job-http");
+        if (httpClient.BaseAddress == null)
+        {
+            _logger.LogError("[JobDispatcher] 未配置 App:BaseUrl，HTTP 任务无法执行自调用, JobId={Id}, Url={Url}", job.Id, url);
+            return;
+        }
         var request = new HttpRequestMessage(new HttpMethod(method), url);
 
         // 设置请求体
@@ -130,7 +145,7 @@ public class JobDispatcher : IJobDispatcher
             request.Content = new StringContent(job.Payload, Encoding.UTF8, "application/json");
         }
 
-        // 设置额外请求头
+        // 设置额外请求头（防御纵深：黑名单过滤，即使数据库被篡改也会剔除敏感头）
         if (!string.IsNullOrWhiteSpace(job.JobArgs))
         {
             try
@@ -140,6 +155,11 @@ public class JobDispatcher : IJobDispatcher
                 {
                     foreach (var (key, value) in headers)
                     {
+                        if (HttpCallSafety.IsForbiddenHeader(key))
+                        {
+                            _logger.LogWarning("[JobDispatcher] 拒绝注入敏感请求头: {Header}, JobId={Id}", key, job.Id);
+                            continue;
+                        }
                         request.Headers.TryAddWithoutValidation(key, value);
                     }
                 }

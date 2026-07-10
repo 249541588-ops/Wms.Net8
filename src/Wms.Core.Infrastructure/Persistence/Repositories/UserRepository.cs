@@ -15,7 +15,7 @@ public class UserRepository : IUserRepository
     /// <summary>
     /// 初始化用户仓储类的新实例
     /// </summary>
-    /// <param name="session">NHibernate会话</param>
+    /// <param name="db">数据库上下文</param>
     public UserRepository(WmsDbContext db)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));

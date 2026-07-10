@@ -8,7 +8,7 @@ using Wms.Core.Domain.Entities.Transport;
 using Wms.Core.Domain.Entities.Warehouse;
 using Wms.Core.Domain.Enums;
 using Wms.Core.Domain.Extensions;
-using Wms.Core.Domain.Interfaces;
+using Wms.Core.Application.Ports;
 using Wms.Core.Domain.Utilities.Response;
 using Wms.Core.Infrastructure.Persistence;
 using WcsRequestDto = Wms.Core.Application.DTOs.WcsRequest;
@@ -189,6 +189,7 @@ public class InboundDoubleRequestHandler : IWcsRequestHandler
                 TaskCode = await TaskCodeGenerator.GenerateAsync(_db),
                 TaskType = RequestType,
                 UnitloadId = unitload.UnitloadId,
+                UnitloadCode = containerCode,
                 StartLocationId = location.LocationId,
                 EndLocationId = targetLocation.LocationId,
                 ForWcs = true,

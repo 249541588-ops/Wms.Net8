@@ -38,7 +38,7 @@ public class CreateTransTaskHandler : INodeHandler
         var endLocation = targetLocation ?? startLocation;
 
         // 入库：存储所有容器码；其他（出库/移库/入库双叉）：只存储当前容器码
-        var requestType = startLocation?.RequestType ?? Cst.入库;
+        var requestType = context.FlowCategory ?? Cst.入库;
         var ext1 = (requestType == Cst.入库)
             ? string.Join(";", request?.ContainerCode ?? [])
             : (context.CurrentContainerCode ?? string.Empty);
@@ -48,13 +48,14 @@ public class CreateTransTaskHandler : INodeHandler
             TaskCode = await TaskCodeGenerator.GenerateAsync(context.Db),
             TaskType = requestType,
             UnitloadId = unitload.UnitloadId,
+            UnitloadCode = unitload.ContainerCode,
             StartLocationId = startLocation.LocationId,
             EndLocationId = endLocation.LocationId,
             ForWcs = true,
             WasSentToWcs = false,
             WareHouse = startLocation.AreaName,
             Ext1 = ext1,
-            Ext2 = requestType == Cst.入库
+            Ext2 = (requestType == Cst.入库)
                 && context.Data.GetValueOrDefault("ValidatedUnitloads") is Dictionary<string, Unitload> validated
                 ? string.Join(";", validated.Values
                     .Where(u => u.UnitloadId != unitload.UnitloadId)

@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
-using Wms.Core.Domain.Interfaces;
+using Wms.Core.Application.Ports;
 
 namespace Wms.Core.Infrastructure.Caching;
 

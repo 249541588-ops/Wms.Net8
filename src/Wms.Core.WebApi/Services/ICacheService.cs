@@ -2,7 +2,7 @@ using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
 using Wms.Core.WebApi.Configuration;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 
 namespace Wms.Core.WebApi.Services;
 

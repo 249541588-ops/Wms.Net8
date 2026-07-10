@@ -72,7 +72,7 @@ public class UploadController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "图片上传失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -174,7 +174,7 @@ public class UploadController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Excel 导入失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -243,7 +243,7 @@ public class UploadController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Excel 导出失败: {Message}", ex.Message);
-            return BadRequest(Result.Fail(ex.Message));
+            return BadRequest(Result.Fail("操作失败"));
         }
     }
 

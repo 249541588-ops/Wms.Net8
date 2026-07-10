@@ -13,7 +13,7 @@ using Wms.Core.Domain.Enums;
 using Wms.Core.Domain.Extensions;
 using Wms.Core.Domain.Repositories;
 using Wms.Core.Domain.Requests;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 using Wms.Core.Domain.ValueObjects;
 using Wms.Core.Infrastructure.Persistence;
 

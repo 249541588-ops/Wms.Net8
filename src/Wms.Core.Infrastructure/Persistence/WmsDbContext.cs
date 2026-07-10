@@ -12,6 +12,8 @@ using Wms.Core.Domain.Entities.Archive;
 using Wms.Core.Domain.Entities.System;
 using Wms.Core.Domain.Entities.Flow;
 using Wms.Core.Domain.Interfaces;
+using Wms.Core.Application.Persistence;
+using Wms.Core.Domain.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 
@@ -20,7 +22,7 @@ namespace Wms.Core.Infrastructure.Persistence;
 /// <summary>
 /// WMS 智能仓储系统 EF Core 数据库上下文
 /// </summary>
-public class WmsDbContext : DbContext
+public class WmsDbContext : DbContext, IFlowDbContext, IUnitOfWork
 {
     /// <summary>
     /// 初始化 WmsDbContext
@@ -110,18 +112,23 @@ public class WmsDbContext : DbContext
     public DbSet<BackgroundJob> BackgroundJobs { get; set; }
     public DbSet<AppSeq> AppSeqs { get; set; }
     public DbSet<AppSetting> AppSettings { get; set; }
-    public DbSet<SysTimedTask> SysTimedTasks { get; set; }
     public DbSet<Ocv3ScanCodeBatchProcess> Ocv3ScanCodeBatchProcesses { get; set; }
     public DbSet<AllowedOpType> AllowedOpTypes { get; set; }
     public DbSet<RoleOpType> RoleOpTypes { get; set; }
     public DbSet<LocationAllocRuleStat> LocationAllocRuleStats { get; set; }
     public DbSet<LocationOp> LocationOps { get; set; }
+    public DbSet<WasteBatchSetting> WasteBatchSettings { get; set; }
 
     // 流程引擎
     public DbSet<FlowTemplate> FlowTemplates { get; set; }
     public DbSet<FlowNode> FlowNodes { get; set; }
     public DbSet<FlowInstance> FlowInstances { get; set; }
     public DbSet<FlowNodeLog> FlowNodeLogs { get; set; }
+
+    // 报表
+    public DbSet<ReportConfig> ReportConfigs { get; set; }
+    public DbSet<UserReportConfig> UserReportConfigs { get; set; }
+    public DbSet<ReportExportTask> ReportExportTasks { get; set; }
 
     /// <summary>
     /// 配置模型
@@ -161,4 +168,17 @@ public class WmsDbContext : DbContext
 
         return base.SaveChangesAsync(cancellationToken);
     }
+
+    // IUnitOfWork 显式实现：统一事务管理抽象（供 FlowContext 分段事务使用）
+    Task IUnitOfWork.BeginTransactionAsync(CancellationToken cancellationToken)
+        => Database.BeginTransactionAsync(cancellationToken);
+
+    async Task IUnitOfWork.CommitAsync(CancellationToken cancellationToken)
+    {
+        await SaveChangesAsync(cancellationToken);
+        await Database.CommitTransactionAsync(cancellationToken);
+    }
+
+    Task IUnitOfWork.RollbackAsync(CancellationToken cancellationToken)
+        => Database.RollbackTransactionAsync(cancellationToken);
 }

@@ -6,7 +6,7 @@ using Wms.Core.Domain.Constants;
 using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Domain.Entities.Transport;
 using Wms.Core.Domain.Entities.Warehouse;
-using Wms.Core.Domain.Interfaces;
+using Wms.Core.Application.Ports;
 using Wms.Core.Domain.Utilities.Response;
 using Wms.Core.Infrastructure.Persistence;
 using WcsRequestDto = Wms.Core.Application.DTOs.WcsRequest;
@@ -23,8 +23,19 @@ public class MoveRequestHandler : IWcsRequestHandler
     private readonly IWcsTaskBridge _wcsBridge;
     private readonly ILogger<MoveRequestHandler> _logger;
 
+    /// <summary>
+    /// 
+    /// </summary>
     public string RequestType => Cst.移库;
 
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="db"></param>
+    /// <param name="allocator"></param>
+    /// <param name="wcsBridge"></param>
+    /// <param name="logger"></param>
+    /// <exception cref="ArgumentNullException"></exception>
     public MoveRequestHandler(
         WmsDbContext db,
         LocationAllocator allocator,
@@ -112,6 +123,7 @@ public class MoveRequestHandler : IWcsRequestHandler
                 TaskCode = await TaskCodeGenerator.GenerateAsync(_db),
                 TaskType = Cst.移库,
                 UnitloadId = unitload.UnitloadId,
+                UnitloadCode = containerCode,
                 StartLocationId = startLocation.LocationId,
                 EndLocationId = targetLocation.LocationId,
                 ForWcs = true,

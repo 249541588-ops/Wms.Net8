@@ -1,7 +1,9 @@
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using Wms.Core.Domain.Entities.System;
 using Wms.Core.Infrastructure.Persistence;
+using Wms.Core.Infrastructure.Security;
 using Wms.Core.WebApi.Jobs;
 using SysBackgroundJob = Wms.Core.Domain.Entities.System.BackgroundJob;
 
@@ -50,16 +52,8 @@ public class BackgroundJobService
     public async Task<SysBackgroundJob> CreateAsync(string jobType, string name, string cron, string? description = null,
         string? apiUrl = null, string? requestType = null, string? payload = null, string? jobArgs = null)
     {
-        // HTTP API 模式安全校验
-        if (jobType == "http-call")
-        {
-            if (string.IsNullOrWhiteSpace(apiUrl))
-                throw new ArgumentException("HTTP API 模式必须指定 API 地址");
-            if (apiUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                apiUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
-                apiUrl.StartsWith("//"))
-                throw new ArgumentException("API 地址只允许相对路径（以 / 开头）");
-        }
+        // Q403 SSRF 防御：http-call 模式校验 ApiUrl + Headers
+        ValidateHttpCallSafety(jobType, apiUrl, jobArgs);
 
         var job = new SysBackgroundJob
         {
@@ -89,12 +83,13 @@ public class BackgroundJobService
     /// <summary>
     /// 修改 Cron 表达式
     /// </summary>
-    public async Task UpdateCronAsync(Guid id, string cron)
+    public async Task UpdateCronAsync(Guid id, string cron, string? description = null)
     {
         var job = await _db.BackgroundJobs.FindAsync(id)
             ?? throw new KeyNotFoundException($"未找到任务: {id}");
 
         job.CronExpression = cron;
+        if (description != null) job.Description = description;
         job.ModifiedTime = DateTime.Now;
         await _db.SaveChangesAsync();
 
@@ -102,6 +97,39 @@ public class BackgroundJobService
         {
             RegisterHangfire(job);
             _logger.LogInformation("修改任务频率: {Id}, Cron={Cron}", id, cron);
+        }
+    }
+
+    /// <summary>
+    /// 完整更新任务（所有可编辑字段）
+    /// </summary>
+    public async Task UpdateAsync(Guid id, string jobType, string name, string cron, string? description = null,
+        string? apiUrl = null, string? requestType = null, string? payload = null, string? jobArgs = null)
+    {
+        var job = await _db.BackgroundJobs.FindAsync(id)
+            ?? throw new KeyNotFoundException($"未找到任务: {id}");
+
+        // Q403 SSRF 防御：http-call 模式校验 ApiUrl + Headers（同 CreateAsync）
+        ValidateHttpCallSafety(jobType, apiUrl, jobArgs);
+
+        job.JobType = jobType;
+        job.JobName = jobType;
+        job.Name = name;
+        job.CronExpression = cron;
+        job.Description = description;
+        job.ApiUrl = apiUrl;
+        job.RequestType = requestType;
+        job.Payload = payload;
+        job.JobArgs = jobArgs;
+        job.ModifiedTime = DateTime.Now;
+
+        await _db.SaveChangesAsync();
+
+        // 运行中的任务需要重新注册 Hangfire（Cron 或模式可能变了）
+        if (job.State == 1)
+        {
+            RegisterHangfire(job);
+            _logger.LogInformation("更新任务: {Id}, Type={Type}, Cron={Cron}", id, jobType, cron);
         }
     }
 
@@ -199,6 +227,44 @@ public class BackgroundJobService
         RecurringJob.AddOrUpdate<JobDispatcher>(
             job.Id.ToString(),
             dispatcher => dispatcher.ExecuteAsync(job.Id),
-            job.CronExpression ?? "*/30 * * * * *");
+            job.CronExpression ?? "0 */5 * * * *");
+    }
+
+    /// <summary>
+    /// Q403 SSRF 防御校验：仅对 http-call 模式生效。
+    /// 校验 ApiUrl（路径白名单）与 JobArgs/Headers（黑名单 Header）。
+    /// 非法输入抛 <see cref="ArgumentException"/>，由 Controller 捕获并返回 400。
+    /// </summary>
+    private static void ValidateHttpCallSafety(string jobType, string? apiUrl, string? jobArgs)
+    {
+        if (jobType != "http-call") return;
+
+        // 1. URL 白名单校验
+        if (!HttpCallSafety.IsValidHttpCallUrl(apiUrl, out var urlReason))
+        {
+            throw new ArgumentException($"http-call 任务 ApiUrl 非法：{urlReason}");
+        }
+
+        // 2. Headers 黑名单校验（jobArgs 是 Headers JSON）
+        if (!string.IsNullOrWhiteSpace(jobArgs))
+        {
+            try
+            {
+                var headers = JsonSerializer.Deserialize<Dictionary<string, string>>(jobArgs);
+                if (headers != null)
+                {
+                    var forbidden = headers.Keys.FirstOrDefault(HttpCallSafety.IsForbiddenHeader);
+                    if (forbidden != null)
+                    {
+                        throw new ArgumentException(
+                            $"http-call 任务 Headers 包含禁止的请求头 '{forbidden}'（不允许注入 Authorization/Cookie/Host/X-Forwarded-* 等敏感头）");
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                throw new ArgumentException("http-call 任务 Headers 必须是有效的 JSON 对象");
+            }
+        }
     }
 }

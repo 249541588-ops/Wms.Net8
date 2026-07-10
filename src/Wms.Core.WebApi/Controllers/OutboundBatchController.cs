@@ -87,7 +87,7 @@ public partial class OutboundBatchController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取出库批次列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -114,7 +114,7 @@ public partial class OutboundBatchController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取出库批次失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -159,7 +159,7 @@ public partial class OutboundBatchController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "创建出库批次失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -207,7 +207,7 @@ public partial class OutboundBatchController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "更新出库批次失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -235,7 +235,7 @@ public partial class OutboundBatchController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "删除出库批次失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 }

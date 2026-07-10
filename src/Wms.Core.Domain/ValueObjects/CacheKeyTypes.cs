@@ -7,6 +7,11 @@ namespace Wms.Core.Domain.ValueObjects
     public static class CacheKeyTypes
     {
         /// <summary>
+        /// Echarts缓存Key时间（分钟）
+        /// </summary>
+        public const int TestCacheKeyTime = 1;
+
+        /// <summary>
         /// 缓存Key时间（分钟）
         /// </summary>
         public const int CacheKeyTime = 30;

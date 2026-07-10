@@ -3,7 +3,7 @@ using Wms.Core.Domain.Entities;
 using Wms.Core.Domain.Enums;
 using Wms.Core.Domain.Extensions;
 using Wms.Core.Domain.Repositories;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 using Wms.Core.Domain.Common;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
@@ -42,14 +42,14 @@ public class PortService : IPortService
     /// <summary>
     /// 创建或更新端口，同时处理端口与巷道的关联关系
     /// </summary>
-    public Result CreatePort(CreatePortRequest request)
+    public async Task<Result> CreatePort(CreatePortRequest request)
     {
         if (request == null)
         {
             return Result.Fail("请求参数不能为空");
         }
 
-        using var transaction = _db.Database.BeginTransaction();
+        await using var transaction = await _db.Database.BeginTransactionAsync();
 
         try
         {
@@ -139,15 +139,15 @@ public class PortService : IPortService
             }
 
             _db.SaveChanges();
-            transaction.Commit();
+            await transaction.CommitAsync();
 
             return Result<Port>.Success(port, request.Id.HasValue ? "更新成功" : "创建成功");
         }
         catch (Exception ex)
         {
-            transaction.Rollback();
+            await transaction.RollbackAsync();
             _logger.LogError(ex, "创建/更新端口失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 }

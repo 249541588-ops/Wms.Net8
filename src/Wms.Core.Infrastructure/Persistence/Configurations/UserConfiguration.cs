@@ -24,6 +24,12 @@ internal class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(x => x.LastLoginTime);
         builder.Property(x => x.IsActive);
         builder.Property(x => x.ModifiedTime);
+        builder.Property(x => x.DeletedAt);
+        builder.Property(x => x.DeletedBy).HasMaxLength(64);
+
+        // 软删除索引：加速 IsActive 过滤，并支持查询"未删除"用户
+        builder.HasIndex(x => x.IsActive);
+        builder.HasIndex(x => x.DeletedAt);
 
         // User-Roles many-to-many via UserRoles join table
         builder.HasMany(u => u.Roles)

@@ -1,8 +1,9 @@
 using Wms.Core.Application.DTOs;
+using Wms.Core.Application.Persistence;
+using Wms.Core.Domain.Abstractions;
 using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Domain.Entities.Transport;
 using Wms.Core.Domain.Entities.Warehouse;
-using Wms.Core.Infrastructure.Persistence;
 
 namespace Wms.Core.Engine;
 
@@ -14,7 +15,12 @@ public class FlowContext
     /// <summary>
     /// 共享 DbContext（所有节点操作同一被 EF Core 跟踪的实体实例）
     /// </summary>
-    public WmsDbContext Db { get; }
+    public IFlowDbContext Db { get; }
+
+    /// <summary>
+    /// 工作单元：用于请求阶段分段事务管理（BeginTransaction/Commit/Rollback）
+    /// </summary>
+    public IUnitOfWork UnitOfWork { get; }
 
     /// <summary>
     /// 原始 WCS 请求（请求阶段）
@@ -62,6 +68,11 @@ public class FlowContext
     public string? Phase { get; set; }
 
     /// <summary>
+    /// 流程分类（入库/出库/移库/质检/盘点），由 FlowTemplate.Category 传入
+    /// </summary>
+    public string? FlowCategory { get; set; }
+
+    /// <summary>
     /// 任务是否被取消/拒绝（完成阶段：cancelled/refused 时为 true）
     /// </summary>
     public bool IsCancelled { get; set; }
@@ -81,9 +92,10 @@ public class FlowContext
     /// </summary>
     public string? CurrentUser { get; set; }
 
-    public FlowContext(WmsDbContext db)
+    public FlowContext(IFlowDbContext db, IUnitOfWork unitOfWork)
     {
         Db = db ?? throw new ArgumentNullException(nameof(db));
+        UnitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
     }
 
     /// <summary>

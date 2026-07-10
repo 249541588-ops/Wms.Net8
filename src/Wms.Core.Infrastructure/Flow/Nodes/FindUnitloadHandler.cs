@@ -6,6 +6,7 @@ using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Domain.Enums;
 using Wms.Core.Engine;
 using Wms.Core.Infrastructure.Persistence;
+using Wms.Core.Application.Persistence;
 
 namespace Wms.Core.Engine.Nodes;
 
@@ -65,7 +66,7 @@ public class FindUnitloadHandler : INodeHandler
         _logger.LogInformation("[FindUnitload] 成功设置 context.Unitload, UnitloadId={UnitloadId}", unitload.UnitloadId);
 
         // 入库时：验证所有容器码都存在对应的 Unitload，并缓存供后续节点使用
-        if (context.StartLocation?.RequestType == Cst.入库 && context.WcsRequest?.ContainerCode != null)
+        if ((context.FlowCategory == Cst.入库 || context.FlowCategory == Cst.入库双叉) && context.WcsRequest?.ContainerCode != null)
         {
             var allUnitloads = new Dictionary<string, Unitload> { [containerCode] = unitload };
             foreach (var cc in context.WcsRequest.ContainerCode)
@@ -82,13 +83,72 @@ public class FindUnitloadHandler : INodeHandler
             context.Data["ValidatedUnitloads"] = allUnitloads;
         }
 
+        // 叠盘时：查找目标（最后一个码）和来源（其余码），校验 Items 和 TransTask
+        if (context.FlowCategory == Cst.叠盘 && context.WcsRequest?.ContainerCode != null)
+        {
+            var codes = context.Data.GetValueOrDefault("StackingCodes") as string[]
+                        ?? context.WcsRequest.ContainerCode.Where(c => !string.IsNullOrWhiteSpace(c)).ToArray();
+
+            // 最后一个容器码为 target，其余为 source
+            var targetCode = codes[^1];
+            var sourceCodes = codes[..^1];
+
+            // 查询 target（含 UnitloadItems）
+            var target = await context.Db.Unitloads
+                .Include(u => u.UnitloadItems)
+                .FirstOrDefaultAsync(u => u.ContainerCode == targetCode);
+            if (target == null)
+                return NodeResult.WcsFail($"目标托盘 {targetCode} 不存在", ResultCodeTypes.数据异常, -1);
+
+            // 查询 source Unitloads（含 UnitloadItems + UnitloadItemDetails）
+            var sources = await context.Db.Unitloads
+                .Include(u => u.UnitloadItems).ThenInclude(ui => ui.UnitloadItemDetails)
+                .Where(u => sourceCodes.Contains(u.ContainerCode))
+                .ToListAsync();
+
+            // 校验所有 source 都存在且有 Items
+            foreach (var code in sourceCodes)
+            {
+                var source = sources.FirstOrDefault(u => u.ContainerCode == code);
+                if (source == null)
+                    return NodeResult.WcsFail($"来源托盘 {code} 不存在", ResultCodeTypes.数据异常, -1);
+                if (source.UnitloadItems == null || source.UnitloadItems.Count == 0)
+                    return NodeResult.WcsFail($"来源托盘 {code} 无物料明细，无需叠盘", ResultCodeTypes.数据异常, -1);
+            }
+
+            // 校验所有 Unitload 关联位置无未完成 TransTask
+            var allUnitloads = sources.Append(target).ToList();
+            var allLocationIds = allUnitloads
+                .Where(u => u.LocationId.HasValue)
+                .Select(u => u.LocationId!.Value)
+                .Distinct()
+                .ToList();
+            var activeTaskCount = await context.Db.TransTasks.CountAsync(t =>
+                allLocationIds.Contains(t.StartLocationId) || allLocationIds.Contains(t.EndLocationId));
+            if (activeTaskCount > 0)
+                return NodeResult.WcsFail($"关联 {activeTaskCount} 个未完成任务，不允许叠盘", ResultCodeTypes.数据异常, -1);
+
+            // 存储供 MergeUnitloads 节点使用
+            context.Data["StackingTarget"] = target;
+            context.Data["StackingSources"] = sources;
+            context.Data["StackingSourceCodes"] = sourceCodes;
+
+            // 设置 context.Unitload = target（保持上下文一致性）
+            context.Unitload = target;
+
+            _logger.LogInformation("[FindUnitload] 叠盘: target={Target}, sources=[{Sources}]",
+                targetCode, string.Join(",", sourceCodes));
+
+            return NodeResult.Ok();
+        }
+
         return NodeResult.Ok();
     }
 
     /// <summary>
     /// 按容器码查找 Unitload（先按 ContainerCode 查，查不到再按 BoxCode 查）
     /// </summary>
-    private static async Task<Unitload?> FindUnitloadByCodeAsync(WmsDbContext db, string code)
+    private static async Task<Unitload?> FindUnitloadByCodeAsync(IFlowDbContext db, string code)
     {
         var unitload = await db.Unitloads.FirstOrDefaultAsync(u => u.ContainerCode == code);
         if (unitload == null)

@@ -35,42 +35,63 @@ public static class FlowTemplateSeeder
             }
             else
             {
-                // 已存在：用 raw SQL 删除旧节点 + raw SQL 插入新节点（绕过 EF Core change tracker）
+                // 已存在：增量同步节点，保留用户修改的字段（IsEnabled、OnFailure、IsTransactionBoundary、ConfigJson）
+                // 软删除的节点（IsDeleted=true）不会被恢复
                 existing.IsBuiltIn = true;
                 logger?.LogInformation("[Seeder] 同步模板: {Code} (Id={Id})", template.Code, existing.Id);
 
-                // 1. 删除旧节点（raw SQL）
-                var deleteResult = await db.Database.ExecuteSqlRawAsync(
-                    $"DELETE FROM FlowNodes WHERE TemplateId = {existing.Id}");
-                logger?.LogInformation("[Seeder] 删除旧节点: {DeletedCount} rows", deleteResult);
-
-                // 2. 插入新节点（raw SQL，逐条插入确保可靠）
-                var newNodes = template.Nodes!.OrderBy(n => n.StepOrder).ToList();
-                foreach (var node in newNodes)
-                {
-                    var sql = BuildInsertNodeSql(existing.Id, node);
-                    await db.Database.ExecuteSqlRawAsync(sql);
-                }
-                logger?.LogInformation("[Seeder] raw SQL 插入新节点: {Count} 个", newNodes.Count);
-
-                // 3. 验证插入结果
-                var actualCount = await db.FlowNodes.CountAsync(n => n.TemplateId == existing.Id);
-                var actualNodes = await db.FlowNodes
+                // 加载所有节点（含已软删除的），用于区分"用户删除"和"种子新增"
+                // GroupBy 去重：同 NodeType 多条记录时优先取未删除的
+                var existingNodes = await db.FlowNodes
                     .Where(n => n.TemplateId == existing.Id)
-                    .OrderBy(n => n.StepOrder)
-                    .Select(n => new { n.NodeType, n.StepOrder })
-                    .ToListAsync();
+                    .GroupBy(n => n.NodeType)
+                    .Select(g => g.OrderBy(n => n.IsDeleted ? 0 : 1).First())
+                    .ToDictionaryAsync(n => n.NodeType);
 
-                logger?.LogInformation("[Seeder] 验证 TemplateId={Id}: DB节点数={ActualCount}, 期望={ExpectedCount}",
-                    existing.Id, actualCount, newNodes.Count);
-                foreach (var n in actualNodes)
-                    logger?.LogInformation("[Seeder]   DB节点 StepOrder={O}: {Type}", n.StepOrder, n.NodeType);
+                var seedNodes = template.Nodes!.OrderBy(n => n.StepOrder).ToList();
+                int inserted = 0, updated = 0, skipped = 0;
 
-                if (actualCount != newNodes.Count)
+                foreach (var seedNode in seedNodes)
                 {
-                    logger?.LogError("[Seeder] ★★★ 节点数不匹配！期望={Expected}, 实际={Actual}, 模板={Code} ★★★",
-                        newNodes.Count, actualCount, template.Code);
+                    if (existingNodes.TryGetValue(seedNode.NodeType, out var dbNode))
+                    {
+                        if (dbNode.IsDeleted)
+                        {
+                            // 用户已软删除此节点，跳过不同步
+                            skipped++;
+                            continue;
+                        }
+                        // 已有活跃节点：只同步结构字段，保留用户配置
+                        dbNode.NodeName = seedNode.NodeName;
+                        dbNode.StepOrder = seedNode.StepOrder;
+                        dbNode.IsPostTransaction = seedNode.IsPostTransaction;
+                        if (!string.IsNullOrEmpty(seedNode.SkipCondition))
+                            dbNode.SkipCondition = seedNode.SkipCondition;
+                        updated++;
+                    }
+                    else
+                    {
+                        // DB 中完全不存在此 NodeType → 种子新增节点，插入
+                        dbNode = new FlowNode
+                        {
+                            TemplateId = existing.Id,
+                            NodeType = seedNode.NodeType,
+                            NodeName = seedNode.NodeName,
+                            StepOrder = seedNode.StepOrder,
+                            IsEnabled = seedNode.IsEnabled,
+                            OnFailure = seedNode.OnFailure,
+                            ConfigJson = seedNode.ConfigJson,
+                            IsTransactionBoundary = seedNode.IsTransactionBoundary,
+                            IsPostTransaction = seedNode.IsPostTransaction,
+                            SkipCondition = seedNode.SkipCondition
+                        };
+                        db.FlowNodes.Add(dbNode);
+                        inserted++;
+                    }
                 }
+
+                logger?.LogInformation("[Seeder] 同步完成: 新增={Inserted}, 更新={Updated}, 跳过(已删除)={Skipped}",
+                    inserted, updated, skipped);
             }
         }
 
@@ -91,38 +112,13 @@ public static class FlowTemplateSeeder
                 logger?.LogWarning("[Seeder] 清理残留模板: {Name}(Id={Id}, Code={Code}), Category={Cat}, Phase={Phase}",
                     s.Name, s.Id, s.Code ?? "(null)", pair.Category, pair.Phase);
                 if (s.Nodes?.Count > 0)
-                    await db.Database.ExecuteSqlRawAsync($"DELETE FROM FlowNodes WHERE TemplateId = {s.Id}");
+                    await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM FlowNodes WHERE TemplateId = {s.Id}");
                 s.IsActive = false;
             }
         }
         await db.SaveChangesAsync();
 
         logger?.LogInformation("[Seeder] ★★★ 流程模板同步完成 ★★★");
-    }
-
-    /// <summary>
-    /// 生成插入节点的 raw SQL（所有值来自硬编码种子数据，无 SQL 注入风险）
-    /// </summary>
-    /// <summary>
-    /// 转义 SQL 字符串值：单引号 → 两个单引号（SQL 安全），花括号 → 双花括号（避免 ExecuteSqlRawAsync 的 Format 解析）
-    /// </summary>
-    private static string EscapeForFormat(string value)
-    {
-        return value.Replace("'", "''").Replace("{", "{{").Replace("}", "}}");
-    }
-
-    private static string BuildInsertNodeSql(int templateId, FlowNode node)
-    {
-        var configJson = node.ConfigJson != null ? "'" + EscapeForFormat(node.ConfigJson) + "'" : "NULL";
-        var onFailure = node.OnFailure != null ? $"'{node.OnFailure}'" : "NULL";
-        var skipCondition = node.SkipCondition != null ? "'" + EscapeForFormat(node.SkipCondition) + "'" : "NULL";
-        var enabled = node.IsEnabled ? 1 : 0;
-        var txBoundary = node.IsTransactionBoundary ? 1 : 0;
-
-        return $"""
-            INSERT INTO FlowNodes (TemplateId, NodeType, NodeName, StepOrder, ConfigJson, IsEnabled, OnFailure, SkipCondition, IsTransactionBoundary)
-            VALUES ({templateId}, '{node.NodeType}', '{node.NodeName}', {node.StepOrder}, {configJson}, {enabled}, {onFailure}, {skipCondition}, {txBoundary})
-            """;
     }
 
     private static List<FlowTemplate> BuildTemplates()
@@ -152,7 +148,7 @@ public static class FlowTemplateSeeder
                 new() { NodeType = "AllocateLocation", NodeName = "分配货位", StepOrder = 6, IsEnabled = true, OnFailure = "Stop" },
                 new() { NodeType = "CreateTransTask", NodeName = "创建运输任务", StepOrder = 7, IsEnabled = true, OnFailure = "Stop", IsTransactionBoundary = true },
                 new() { NodeType = "UpdateUnitload", NodeName = "更新托盘状态", StepOrder = 8, IsEnabled = true, OnFailure = "Stop" },
-                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 9, IsEnabled = true, OnFailure = "Skip" },
+                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 9, IsEnabled = true, OnFailure = "Skip", IsTransactionBoundary = true },
                 new() { NodeType = "SendWcsTask", NodeName = "下发WCS", StepOrder = 10, IsEnabled = true, OnFailure = "Stop" },
             }
         });
@@ -164,7 +160,7 @@ public static class FlowTemplateSeeder
             Code = "INBOUND_STANDARD_COMPLETION",
             Category = "入库",
             Phase = Cst.PhaseCompletion,
-            Description = "入库完成流程：更新Unitload→工序推进→更新库位→记录流水→归档",
+            Description = "入库完成流程：更新Unitload→工序推进→更新库位→记录流水→归档→MES上传→杭可通知",
             IsActive = true,
             SortOrder = 1,
             Priority = 10,
@@ -176,6 +172,8 @@ public static class FlowTemplateSeeder
                 new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 3, IsEnabled = true, OnFailure = "Skip" },
                 new() { NodeType = "RecordFlow", NodeName = "记录流水", StepOrder = 4, IsEnabled = true, OnFailure = "Skip" },
                 new() { NodeType = "ArchiveTask", NodeName = "归档任务", StepOrder = 5, IsEnabled = true, OnFailure = "Stop" },
+                new() { NodeType = "UploadMes", NodeName = "上传MES", StepOrder = 6, IsEnabled = true, OnFailure = "Skip", IsPostTransaction = true },
+                new() { NodeType = "NotifyHangKe", NodeName = "通知杭可", StepOrder = 7, IsEnabled = true, OnFailure = "Skip", IsPostTransaction = true },
             }
         });
 
@@ -201,7 +199,7 @@ public static class FlowTemplateSeeder
                 new() { NodeType = "AllocateLocation", NodeName = "分配货位", StepOrder = 6, IsEnabled = true, OnFailure = "Stop" },
                 new() { NodeType = "CreateTransTask", NodeName = "创建运输任务", StepOrder = 7, IsEnabled = true, OnFailure = "Stop", IsTransactionBoundary = true },
                 new() { NodeType = "UpdateUnitload", NodeName = "更新托盘状态", StepOrder = 8, IsEnabled = true, OnFailure = "Stop" },
-                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 9, IsEnabled = true, OnFailure = "Skip" },
+                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 9, IsEnabled = true, OnFailure = "Skip", IsTransactionBoundary = true },
                 new() { NodeType = "SendWcsTask", NodeName = "下发WCS", StepOrder = 10, IsEnabled = true, OnFailure = "Stop" },
             }
         });
@@ -213,7 +211,7 @@ public static class FlowTemplateSeeder
             Code = "INBOUND_DOUBLE_COMPLETION",
             Category = "入库双叉",
             Phase = Cst.PhaseCompletion,
-            Description = "入库双叉完成流程：更新Unitload→工序推进→更新库位→记录流水→归档",
+            Description = "入库双叉完成流程：更新Unitload→工序推进→更新库位→记录流水→归档→MES上传→杭可通知",
             IsActive = true,
             SortOrder = 2,
             Priority = 10,
@@ -225,6 +223,8 @@ public static class FlowTemplateSeeder
                 new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 3, IsEnabled = true, OnFailure = "Skip" },
                 new() { NodeType = "RecordFlow", NodeName = "记录流水", StepOrder = 4, IsEnabled = true, OnFailure = "Skip" },
                 new() { NodeType = "ArchiveTask", NodeName = "归档任务", StepOrder = 5, IsEnabled = true, OnFailure = "Stop" },
+                new() { NodeType = "UploadMes", NodeName = "上传MES", StepOrder = 6, IsEnabled = true, OnFailure = "Skip", IsPostTransaction = true },
+                new() { NodeType = "NotifyHangKe", NodeName = "通知杭可", StepOrder = 7, IsEnabled = true, OnFailure = "Skip", IsPostTransaction = true },
             }
         });
 
@@ -247,7 +247,7 @@ public static class FlowTemplateSeeder
                 new() { NodeType = "CheckUnitloadStatus", NodeName = "检查托盘状态", StepOrder = 3, IsEnabled = true, OnFailure = "Stop" },
                 new() { NodeType = "CreateTransTask", NodeName = "创建运输任务", StepOrder = 4, IsEnabled = true, OnFailure = "Stop", IsTransactionBoundary = true },
                 new() { NodeType = "UpdateUnitload", NodeName = "更新托盘状态", StepOrder = 5, IsEnabled = true, OnFailure = "Stop" },
-                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 6, IsEnabled = true, OnFailure = "Skip" },
+                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 6, IsEnabled = true, OnFailure = "Skip", IsTransactionBoundary = true },
                 new() { NodeType = "SendWcsTask", NodeName = "下发WCS", StepOrder = 7, IsEnabled = true, OnFailure = "Stop" },
             }
         });
@@ -259,7 +259,7 @@ public static class FlowTemplateSeeder
             Code = "OUTBOUND_STANDARD_COMPLETION",
             Category = "出库",
             Phase = Cst.PhaseCompletion,
-            Description = "出库完成流程：记录流水→拆盘→归档",
+            Description = "出库完成流程：记录流水→拆盘→归档→MES上传→杭可通知",
             IsActive = true,
             SortOrder = 1,
             Priority = 10,
@@ -268,9 +268,12 @@ public static class FlowTemplateSeeder
             {
                 new() { NodeType = "RecordFlow", NodeName = "记录出库流水", StepOrder = 1, IsEnabled = true, OnFailure = "Skip" },
                 new() { NodeType = "UpdateUnitload", NodeName = "重置托盘状态", StepOrder = 2, IsEnabled = true, OnFailure = "Stop" },
-                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 3, IsEnabled = true, OnFailure = "Skip" },
-                new() { NodeType = "SplitUnitload", NodeName = "拆盘归档", StepOrder = 4, IsEnabled = true, OnFailure = "Skip" },
-                new() { NodeType = "ArchiveTask", NodeName = "归档任务", StepOrder = 5, IsEnabled = true, OnFailure = "Stop" },
+                new() { NodeType = "CleanupEmptyTray", NodeName = "清理空托盘", StepOrder = 3, IsEnabled = true, OnFailure = "Skip" },
+                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 4, IsEnabled = true, OnFailure = "Skip" },
+                new() { NodeType = "SplitUnitload", NodeName = "拆盘归档", StepOrder = 5, IsEnabled = true, OnFailure = "Skip" },
+                new() { NodeType = "ArchiveTask", NodeName = "归档任务", StepOrder = 6, IsEnabled = true, OnFailure = "Stop" },
+                new() { NodeType = "UploadMes", NodeName = "上传MES", StepOrder = 7, IsEnabled = true, OnFailure = "Skip", IsPostTransaction = true },
+                new() { NodeType = "NotifyHangKe", NodeName = "通知杭可", StepOrder = 8, IsEnabled = true, OnFailure = "Skip", IsPostTransaction = true },
             }
         });
 
@@ -295,8 +298,44 @@ public static class FlowTemplateSeeder
                 new() { NodeType = "AllocateLocation", NodeName = "分配货位", StepOrder = 5, IsEnabled = true, OnFailure = "Stop" },
                 new() { NodeType = "CreateTransTask", NodeName = "创建运输任务", StepOrder = 6, IsEnabled = true, OnFailure = "Stop", IsTransactionBoundary = true },
                 new() { NodeType = "UpdateUnitload", NodeName = "更新托盘状态", StepOrder = 7, IsEnabled = true, OnFailure = "Stop" },
-                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 8, IsEnabled = true, OnFailure = "Skip" },
+                new() { NodeType = "UpdateLocationCount", NodeName = "更新库位计数", StepOrder = 8, IsEnabled = true, OnFailure = "Skip", IsTransactionBoundary = true },
                 new() { NodeType = "SendWcsTask", NodeName = "下发WCS", StepOrder = 9, IsEnabled = true, OnFailure = "Stop" },
+            }
+        });
+
+        // ========== 排废验证（请求阶段）==========
+        list.Add(new FlowTemplate
+        {
+            Name = "排废验证",
+            Code = "WASTE_DISPOSAL_REQUEST",
+            Category = "排废",
+            Phase = Cst.PhaseRequest,
+            Description = "排废验证请求流程：验证容器→MES/杭可可选→组装排废数据",
+            IsActive = false, // 默认关闭，手动启用后替代硬编码 Handler
+            SortOrder = 1,
+            Priority = 10,
+            MatchRules = """{"requestType":"排废","priority":10}""",
+            Nodes = new List<FlowNode>
+            {
+                new() { NodeType = "WasteDisposalRequest", NodeName = "排废验证", StepOrder = 1, IsEnabled = true, OnFailure = "Stop" },
+            }
+        });
+
+        // ========== 排废完成处理（请求阶段）==========
+        list.Add(new FlowTemplate
+        {
+            Name = "排废完成处理",
+            Code = "WASTE_DISPOSAL_CAPTURE_REQUEST",
+            Category = "排废更新",
+            Phase = Cst.PhaseRequest,
+            Description = "排废完成请求流程：删除NG电芯→级联清理→杭可注销",
+            IsActive = false,
+            SortOrder = 1,
+            Priority = 10,
+            MatchRules = """{"requestType":"排废更新","priority":10}""",
+            Nodes = new List<FlowNode>
+            {
+                new() { NodeType = "WasteDisposalCapture", NodeName = "排废完成处理", StepOrder = 1, IsEnabled = true, OnFailure = "Stop" },
             }
         });
 

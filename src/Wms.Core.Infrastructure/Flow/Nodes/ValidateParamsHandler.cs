@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Wms.Core.Domain.Common;
+using Wms.Core.Domain.Constants;
 using Wms.Core.Domain.Enums;
 using Wms.Core.Engine;
 using Wms.Core.Domain.Utilities.Response;
@@ -33,6 +34,22 @@ public class ValidateParamsHandler : INodeHandler
         // 检查 ContainerCode
         if (request.ContainerCode == null || request.ContainerCode.Length == 0)
             return Task.FromResult(NodeResult.WcsFail("容器编码不能为空", ResultCodeTypes.数据异常, -1));
+
+        // 叠盘时：两步校验（至少 2 个有效容器编码）
+        if (context.FlowCategory == Cst.叠盘)
+        {
+            if (request.ContainerCode.Length < 2)
+                return Task.FromResult(NodeResult.WcsFail("叠盘至少需要两个容器编码", ResultCodeTypes.数据异常, -1));
+
+            var codes = request.ContainerCode
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .ToArray();
+
+            if (codes.Length < 2)
+                return Task.FromResult(NodeResult.WcsFail("有效容器编码至少需要两个", ResultCodeTypes.数据异常, -1));
+
+            context.Data["StackingCodes"] = codes;
+        }
 
         return Task.FromResult(NodeResult.Ok());
     }

@@ -6,7 +6,7 @@ using Wms.Core.Domain.Constants;
 using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Domain.Entities.Transport;
 using Wms.Core.Domain.Entities.Warehouse;
-using Wms.Core.Domain.Interfaces;
+using Wms.Core.Application.Ports;
 using Wms.Core.Domain.Utilities.Response;
 using Wms.Core.Infrastructure.Persistence;
 using WcsRequestDto = Wms.Core.Application.DTOs.WcsRequest;
@@ -105,6 +105,7 @@ public class OutboundRequestHandler : IWcsRequestHandler
             TaskCode = await TaskCodeGenerator.GenerateAsync(_db),
             TaskType = Cst.出库,
             UnitloadId = firstUnitload.UnitloadId,
+            UnitloadCode = firstUnitload.ContainerCode,
             StartLocationId = location.LocationId,
             EndLocationId = location.LocationId,
             ForWcs = true,

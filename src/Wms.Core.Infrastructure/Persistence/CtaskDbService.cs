@@ -4,7 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Wms.Core.Domain.Entities.Transport;
 using Wms.Core.Domain.Enums;
-using Wms.Core.Domain.Interfaces;
+using Wms.Core.Application.Ports;
 
 namespace Wms.Core.Infrastructure.Persistence;
 
@@ -23,6 +23,11 @@ public class CtaskDbService : ICtaskDbService
     /// <summary>
     /// 初始化 ctask 数据库服务
     /// </summary>
+    static CtaskDbService()
+    {
+        Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
+    }
+
     public CtaskDbService(IConfiguration configuration, ILogger<CtaskDbService> logger)
     {
         _connectionString = configuration.GetConnectionString("CtaskConnection")
@@ -127,5 +132,41 @@ public class CtaskDbService : ICtaskDbService
         using var conn = new SqlConnection(_connectionString);
         await conn.ExecuteAsync(sql, new { TaskCode = taskCode, WcsState = wcsState, CompletedAt = completedAt });
         _logger.LogInformation("[CtaskDb] 更新 wcs_state: {TaskCode} → {WcsState}, completed_at={CompletedAt}", taskCode, wcsState, completedAt);
+    }
+
+    /// <summary>
+    /// 清理已完成处理的 WCS 任务（分批删除，仅 wms_state='archived'）
+    /// </summary>
+    public async Task<int> CleanupArchivedTasksAsync(int retentionDays)
+    {
+        var threshold = DateTime.UtcNow.AddDays(-retentionDays);
+        int total = 0, deleted;
+        const string sql = @"
+            DELETE TOP (5000) FROM wcs_tasks
+            WHERE wms_state = @State AND updated_at < @Threshold";
+
+        using var conn = new SqlConnection(_connectionString);
+        do
+        {
+            deleted = await conn.ExecuteAsync(sql, new { State = "archived", Threshold = threshold });
+            total += deleted;
+            if (deleted > 0) await Task.Delay(50);
+        } while (deleted > 0);
+
+        _logger.LogInformation("[CtaskDb] wcs_tasks 清理完成，删除 {Count} 条", total);
+        return total;
+    }
+
+    /// <summary>
+    /// 根据 task_code 删除任务（用于回滚）
+    /// </summary>
+    public async Task<int> DeleteTaskAsync(string taskCode)
+    {
+        const string sql = "DELETE FROM wcs_tasks WHERE task_code = @TaskCode";
+
+        using var conn = new SqlConnection(_connectionString);
+        var affected = await conn.ExecuteAsync(sql, new { TaskCode = taskCode });
+        _logger.LogDebug("[CtaskDb] 删除 wcs_tasks: TaskCode={TaskCode}, Affected={Affected}", taskCode, affected);
+        return affected;
     }
 }

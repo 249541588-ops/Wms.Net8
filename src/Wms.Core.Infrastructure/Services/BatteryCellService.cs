@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Domain.Repositories;
 using Wms.Core.Domain.Requests;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 
 namespace Wms.Core.Infrastructure.Services;
 
@@ -18,7 +18,7 @@ public class BatteryCellService : IBatteryCellService
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     }
 
-    public (IEnumerable<BatteryCell> Data, int TotalCount) GetPagedList(string? keyword, int pageNumber, int pageSize)
+    public (IEnumerable<BatteryCell> Data, int TotalCount) GetPagedList(string? keyword, string? batch, string? xLevel, string? containerCode, string? status, int? materialId, int pageNumber, int pageSize)
     {
         pageSize = Math.Min(pageSize, 100);
         IQueryable<BatteryCell> query = _repository.GetAll().Include(s => s.Material);
@@ -28,6 +28,31 @@ public class BatteryCellService : IBatteryCellService
             query = query.Where(s => s.BarCode!.Contains(keyword)
                 || s.Batch!.Contains(keyword)
                 || s.Sequence!.Contains(keyword));
+        }
+
+        if (!string.IsNullOrEmpty(batch))
+        {
+            query = query.Where(s => s.Batch!.Contains(batch));
+        }
+
+        if (!string.IsNullOrEmpty(xLevel))
+        {
+            query = query.Where(s => s.xLevel!.Contains(xLevel));
+        }
+
+        if (!string.IsNullOrEmpty(containerCode))
+        {
+            query = query.Where(s => s.ContainerCode!.Contains(containerCode));
+        }
+
+        if (!string.IsNullOrEmpty(status))
+        {
+            query = query.Where(s => s.Status!.Contains(status));
+        }
+
+        if (materialId.HasValue)
+        {
+            query = query.Where(s => s.MaterialId == materialId.Value);
         }
 
         var totalCount = query.Count();

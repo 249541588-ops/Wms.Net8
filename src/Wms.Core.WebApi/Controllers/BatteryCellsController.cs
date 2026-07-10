@@ -4,7 +4,7 @@ using Wms.Core.Application.DTOs;
 using Wms.Core.Domain.Common;
 using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Domain.Requests;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 
 namespace Wms.Core.WebApi.Controllers;
 
@@ -35,12 +35,20 @@ public class BatteryCellsController : ControllerBase
     /// <summary>
     /// 获取分页列表
     /// </summary>
+    /// <param name="keyword">关键字（可选）</param>
+    /// <param name="batch">批次（可选）</param>
+    /// <param name="xLevel">档位/X等级（可选）</param>
+    /// <param name="containerCode">容器编码（可选）</param>
+    /// <param name="status">状态（可选）</param>
+    /// <param name="materialId">物料ID（可选）</param>
+    /// <param name="pageNumber">页码（默认 1）</param>
+    /// <param name="pageSize">每页大小（默认 20，最大 100）</param>
     [HttpGet]
-    public Result GetAll(string? keyword = null, int pageNumber = 1, int pageSize = 20)
+    public Result GetAll(string? keyword = null, string? batch = null, string? xLevel = null, string? containerCode = null, string? status = null, int? materialId = null, int pageNumber = 1, int pageSize = 20)
     {
         try
         {
-            var (data, totalCount) = _service.GetPagedList(keyword, pageNumber, pageSize);
+            var (data, totalCount) = _service.GetPagedList(keyword, batch, xLevel, containerCode, status, materialId, pageNumber, pageSize);
             var pagedResult = new PagedResult<BatteryCell>
             {
                 Data = data,
@@ -53,7 +61,7 @@ public class BatteryCellsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取电芯列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -65,14 +73,14 @@ public class BatteryCellsController : ControllerBase
     {
         try
         {
-            var list = _service.GetPagedList(null, 1, 1000);
+            var list = _service.GetPagedList(null, null, null, null, null, null, 1, 1000);
             var data = list.Data.Select(s => new { s.Id, s.BarCode, s.Batch });
             return Result<object>.Success(data.ToList(), "获取成功");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取电芯下拉列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -93,7 +101,7 @@ public class BatteryCellsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取电芯详情失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -111,7 +119,7 @@ public class BatteryCellsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "创建电芯失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -132,7 +140,7 @@ public class BatteryCellsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "更新电芯失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -153,7 +161,7 @@ public class BatteryCellsController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "删除电芯失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 }

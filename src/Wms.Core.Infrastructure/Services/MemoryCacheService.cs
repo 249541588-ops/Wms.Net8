@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 

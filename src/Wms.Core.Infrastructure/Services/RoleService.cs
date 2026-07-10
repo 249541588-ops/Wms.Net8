@@ -1,11 +1,12 @@
 using Microsoft.Extensions.Logging;
+using Wms.Core.Domain.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using Wms.Core.Infrastructure.Persistence;
 using Wms.Core.Domain.Requests;
 using Wms.Core.Domain.Entities;
 using Wms.Core.Domain.Entities.Identity;
 using Wms.Core.Domain.Repositories;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 
 namespace Wms.Core.Infrastructure.Services;
 
@@ -32,16 +33,16 @@ public class RoleService : IRoleService
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
     /// <exception cref="NotImplementedException"></exception>
-    public bool InitialConfiguration()
+    public async Task<bool> InitialConfiguration()
     {
         // 验证参数
-        Role role = _db.Set<Role>().Where(x => x.Id == 1).FirstOrDefault();
+        Role role = await _db.Set<Role>().Where(x => x.Id == 1).FirstOrDefaultAsync();
         if (role == null)
-            throw new Exception("记录不存在");
+            throw new InvalidRequestException("记录不存在");
 
         var menus = _db.Set<Menus>();
         if (role == null)
-            throw new Exception("记录不存在");
+            throw new InvalidRequestException("记录不存在");
 
         string[] arrary = new string[] { "Add", "Edit", "Delete", "Search", "Reset", "BatchDelete", "ResetPassword", "ChangeStatus", "ChangeLock" };
         foreach (var menu in menus) {
@@ -65,67 +66,77 @@ public class RoleService : IRoleService
     /// <param name="request">菜单权限列表</param>
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
-    public bool SettingRoleMenus(int Roleid, List<SettingRoleMenusRequest> request)
+    public async Task<bool> SettingRoleMenus(int Roleid, List<SettingRoleMenusRequest> request)
     {
         // 验证参数
-        Role role = _db.Set<Role>().Where(x => x.Id == Roleid).FirstOrDefault();
+        Role role = await _db.Set<Role>().Where(x => x.Id == Roleid).FirstOrDefaultAsync();
         if (role == null)
-            throw new Exception($"角色 ID {Roleid} 不存在");
+            throw new InvalidRequestException($"角色 ID {Roleid} 不存在");
 
         if (request == null || request.Count == 0)
-            throw new Exception("请选择菜单权限");
+            throw new InvalidRequestException("请选择菜单权限");
 
-        // 步骤1：删除旧的按钮权限
-        var oldButtonFuns = _db.Set<Role_Menu_Funs>()
-            .Where(x => x.RoleId == Roleid)
-            .ToList();
-
-        foreach (var fun in oldButtonFuns)
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        try
         {
-            _db.Remove(fun);
-        }
+            // 步骤1：删除旧的按钮权限
+            var oldButtonFuns = _db.Set<Role_Menu_Funs>()
+                .Where(x => x.RoleId == Roleid)
+                .ToList();
 
-        // 步骤2：删除旧的菜单关联
-        var oldRoleMenus = _db.Set<Role_Menu>()
-            .Where(x => x.RoleId == Roleid)
-            .ToList();
-
-        foreach (var rm in oldRoleMenus)
-        {
-            _db.Remove(rm);
-        }
-
-        // 步骤3：立即执行删除操作
-        _db.SaveChangesAsync().Wait();
-
-        // 步骤4：添加新的菜单和按钮权限
-        foreach (var menu in request)
-        {
-            // 创建菜单关联
-            Role_Menu role_Menu = new Role_Menu()
+            foreach (var fun in oldButtonFuns)
             {
-                MenuId = menu.MenuId,
-                RoleId = role.Id,
-            };
-            _db.Add(role_Menu);
+                _db.Remove(fun);
+            }
 
-            // 创建按钮权限
-            foreach (string item in menu.Btn ?? Array.Empty<string>())
+            // 步骤2：删除旧的菜单关联
+            var oldRoleMenus = _db.Set<Role_Menu>()
+                .Where(x => x.RoleId == Roleid)
+                .ToList();
+
+            foreach (var rm in oldRoleMenus)
             {
-                if (!string.IsNullOrWhiteSpace(item))
+                _db.Remove(rm);
+            }
+
+            // 步骤3：立即执行删除操作
+            await _db.SaveChangesAsync();
+
+            // 步骤4：添加新的菜单和按钮权限
+            foreach (var menu in request)
+            {
+                // 创建菜单关联
+                Role_Menu role_Menu = new Role_Menu()
                 {
-                    Role_Menu_Funs funs = new Role_Menu_Funs()
+                    MenuId = menu.MenuId,
+                    RoleId = role.Id,
+                };
+                _db.Add(role_Menu);
+
+                // 创建按钮权限
+                foreach (string item in menu.Btn ?? Array.Empty<string>())
+                {
+                    if (!string.IsNullOrWhiteSpace(item))
                     {
-                        MenuId = menu.MenuId,
-                        RoleId = role.Id,
-                        FunctionButton = item.Trim(),
-                    };
-                    _db.Add(funs);
+                        Role_Menu_Funs funs = new Role_Menu_Funs()
+                        {
+                            MenuId = menu.MenuId,
+                            RoleId = role.Id,
+                            FunctionButton = item.Trim(),
+                        };
+                        _db.Add(funs);
+                    }
                 }
             }
-        }
 
-        _db.SaveChanges();
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
 
         _logger.LogInformation("角色 {RoleId} 菜单权限设置成功，共 {Count} 个菜单", Roleid, request.Count);
         return true;

@@ -61,6 +61,12 @@ public class TransTask : IEntity<int>, IAuditable
     public virtual int? UnitloadId { get; set; }
 
     /// <summary>
+    /// 托盘容器编码快照（任务创建时冻结，归档时优先使用，避免拆盘/叠盘后导航失效）
+    /// </summary>
+    [MaxLength(100)]
+    public virtual string? UnitloadCode { get; set; }
+
+    /// <summary>
     /// 起始库位ID
     /// </summary>
     public virtual int StartLocationId { get; set; }

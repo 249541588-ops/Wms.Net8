@@ -34,7 +34,7 @@ public class UpdateUnitloadHandler : INodeHandler
             return Task.FromResult(NodeResult.Fail("托盘为空"));
 
         var isCompletion = context.Phase == Cst.PhaseCompletion;
-        var requestType = context.StartLocation?.RequestType ?? Cst.入库;
+        var requestType = context.FlowCategory ?? Cst.入库;
 
         if (isCompletion)
         {
@@ -44,6 +44,10 @@ public class UpdateUnitloadHandler : INodeHandler
 
             if (!context.IsCancelled)
             {
+                // 保存原始入库时间（出库 MES 上传需要）
+                if (unitload.CurrentLocationTime.HasValue)
+                    context.Data["OriginalLocationTime"] = unitload.CurrentLocationTime.Value;
+
                 // 真正完成：设置到终点位置
                 if (context.TransTask != null && context.TransTask.EndLocationId > 0)
                 {
@@ -81,7 +85,7 @@ public class UpdateUnitloadHandler : INodeHandler
                 unitload.CurrentLocationTime = DateTime.Now;
             }
 
-            // 入库时：更新所有验证过的 Unitload
+            // 入库时：更新所有验证过的 Unitload（仅标准入库；入库双叉走循环模式，各自迭代标记）
             if (requestType == Cst.入库)
             {
                 var validated = context.Data.GetValueOrDefault("ValidatedUnitloads") as Dictionary<string, Unitload>;

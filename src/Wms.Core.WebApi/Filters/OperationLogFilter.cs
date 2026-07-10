@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.EntityFrameworkCore;
 using System.Text.RegularExpressions;
+using Wms.Core.Application.Ports;
 
 namespace Wms.Core.WebApi.Filters;
 
@@ -14,11 +15,13 @@ public class OperationLogFilter : IAsyncActionFilter
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<OperationLogFilter> _logger;
+    private readonly IBackgroundTaskQueue _taskQueue;
 
-    public OperationLogFilter(IServiceScopeFactory scopeFactory, ILogger<OperationLogFilter> logger)
+    public OperationLogFilter(IServiceScopeFactory scopeFactory, ILogger<OperationLogFilter> logger, IBackgroundTaskQueue taskQueue)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _taskQueue = taskQueue;
     }
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
@@ -103,7 +106,7 @@ public class OperationLogFilter : IAsyncActionFilter
         log.Success = log.StatusCode >= 200 && log.StatusCode < 300;
 
         // 异步写入数据库，不阻塞响应
-        _ = Task.Run(async () =>
+        _ = _taskQueue.QueueAsync(async ct =>
         {
             try
             {
@@ -120,13 +123,13 @@ public class OperationLogFilter : IAsyncActionFilter
     }
 
     /// <summary>
-    /// 脱敏请求体：Auth 模块请求中的 password 字段替换为 ***
+    /// 脱敏请求体：对所有模块，凡是含 password 字段（含 oldPassword/newPassword 等）统一替换为 ***
     /// </summary>
     private static string? SanitizeRequestBody(string? json, string? module)
     {
         if (json == null) return null;
-        if (module == "Auth" && json.Contains("password", StringComparison.OrdinalIgnoreCase))
-            return Regex.Replace(json, @"""password""\s*:\s*""[^""]*""", @"""password"":""***""", RegexOptions.IgnoreCase);
+        if (json.Contains("password", StringComparison.OrdinalIgnoreCase))
+            return Regex.Replace(json, @"""(\w*password\w*)""\s*:\s*""[^""]*""", @"""$1"":""***""", RegexOptions.IgnoreCase);
         return json;
     }
 }

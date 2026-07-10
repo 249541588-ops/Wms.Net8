@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Wms.Core.Domain.Common;
 using Wms.Core.Domain.Constants;
 using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Engine;
@@ -47,7 +48,7 @@ public class RecordFlowHandler : INodeHandler
         if (isCompletion)
         {
             // 确定业务类型（入库/出库/移库）
-            var bizType = transTask.TaskType ?? context.StartLocation?.RequestType ?? Cst.入库;
+            var bizType = transTask.TaskType ?? context.FlowCategory ?? Cst.入库;
             var locationId = transTask.EndLocationId;
 
             // 创建 Flow 流水
@@ -55,7 +56,9 @@ public class RecordFlowHandler : INodeHandler
             {
                 foreach (var item in unitload.UnitloadItems)
                 {
-                    if (item.MaterialId.HasValue)
+                    if (item.MaterialId.HasValue
+                        && item.Material?.MaterialCode != CommonTypes.空托盘
+                        && item.Material?.MaterialCode != CommonTypes.工装板)
                     {
                         var flow = LocationAllocator.CreateFlow(unitload, transTask, locationId, bizType, item.MaterialId.Value, item);
                         context.Db.Flows.Add(flow);
@@ -73,7 +76,9 @@ public class RecordFlowHandler : INodeHandler
                     {
                         foreach (var item in u.UnitloadItems)
                         {
-                            if (item.MaterialId.HasValue)
+                            if (item.MaterialId.HasValue
+                                && item.Material?.MaterialCode != CommonTypes.空托盘
+                                && item.Material?.MaterialCode != CommonTypes.工装板)
                             {
                                 var flow = LocationAllocator.CreateFlow(u, transTask, locationId, bizType, item.MaterialId.Value, item);
                                 context.Db.Flows.Add(flow);

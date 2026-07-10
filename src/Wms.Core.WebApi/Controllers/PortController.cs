@@ -7,7 +7,7 @@ using Wms.Core.Domain.Entities.Warehouse;
 using Wms.Core.Domain.Enums;
 using Wms.Core.Domain.Repositories;
 using Wms.Core.Domain.Requests;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 using Wms.Core.Infrastructure.Persistence;
 using Wms.Core.WebApi.Extensions;
 using Wms.Core.WebApi.Filters;
@@ -87,7 +87,7 @@ public partial class PortController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -114,7 +114,7 @@ public partial class PortController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取对象失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -139,7 +139,7 @@ public partial class PortController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取关联巷道失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -151,16 +151,16 @@ public partial class PortController : ControllerBase
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public Result Create([FromBody] CreatePortRequest request)
+    public async Task<Result> Create([FromBody] CreatePortRequest request)
     {
         try
         {
-            return _portService.CreatePort(request);
+            return await _portService.CreatePort(request);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "创建失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -174,17 +174,17 @@ public partial class PortController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public Result Update(int id, [FromBody] CreatePortRequest request)
+    public async Task<Result> Update(int id, [FromBody] CreatePortRequest request)
     {
         try
         {
             request.Id = id;
-            return _portService.CreatePort(request);
+            return await _portService.CreatePort(request);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "更新失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -220,7 +220,7 @@ public partial class PortController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "删除失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 }

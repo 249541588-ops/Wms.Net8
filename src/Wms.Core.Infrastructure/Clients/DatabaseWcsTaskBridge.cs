@@ -4,8 +4,9 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Wms.Core.Domain.Entities.Transport;
 using Wms.Core.Domain.Enums;
-using Wms.Core.Domain.Interfaces;
+using Wms.Core.Application.Ports;
 using Wms.Core.Infrastructure.Persistence;
+using Wms.Core.Application.Ports;
 
 namespace Wms.Core.Infrastructure.Clients;
 
@@ -18,6 +19,7 @@ public class DatabaseWcsTaskBridge : IWcsTaskBridge
     private readonly WmsDbContext _db;
     private readonly ILogger<DatabaseWcsTaskBridge> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IBackgroundTaskQueue _taskQueue;
 
     /// <summary>
     /// 初始化数据库模式适配器
@@ -26,12 +28,14 @@ public class DatabaseWcsTaskBridge : IWcsTaskBridge
         ICtaskDbService ctaskDb,
         WmsDbContext db,
         ILogger<DatabaseWcsTaskBridge> logger,
-        IServiceScopeFactory scopeFactory)
+        IServiceScopeFactory scopeFactory,
+        IBackgroundTaskQueue taskQueue)
     {
         _ctaskDb = ctaskDb ?? throw new ArgumentNullException(nameof(ctaskDb));
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
+        _taskQueue = taskQueue ?? throw new ArgumentNullException(nameof(taskQueue));
     }
 
     /// <summary>
@@ -67,14 +71,16 @@ public class DatabaseWcsTaskBridge : IWcsTaskBridge
             UpdatedAt = DateTime.Now,
             Warehouse = task.WareHouse,
             LocationGroup = task.LocationGroup,
-            WmsNote = task.Comment
+            WmsNote = task.Comment,
+            Ex1 = task.Ext1,
+            Ex2 = task.Ext2
         };
 
         await _ctaskDb.WriteTaskAsync(wcsTask);
         _logger.LogInformation("[WcsBridge] 任务已下发到 wcs_tasks: {TaskCode}", wcsTask.TaskCode);
 
         // 异步记录出站接口日志
-        _ = Task.Run(() => SaveInterfaceLogAsync("WMS", "SendTask", task.EndLocationId.ToString(), task.Unitload?.ContainerCode, JsonConvert.SerializeObject(wcsTask), true));
+        _ = _taskQueue.QueueAsync(_ => SaveInterfaceLogAsync("WMS", "SendTask", task.EndLocation?.LocationCode ?? string.Empty, task.Unitload?.ContainerCode, JsonConvert.SerializeObject(wcsTask), true));
     }
 
     /// <summary>
@@ -97,6 +103,16 @@ public class DatabaseWcsTaskBridge : IWcsTaskBridge
         }
 
         return changed;
+    }
+
+    /// <summary>
+    /// 删除已下发的任务（用于回滚）
+    /// </summary>
+    public async Task<bool> DeleteTaskAsync(string taskCode)
+    {
+        var affected = await _ctaskDb.DeleteTaskAsync(taskCode);
+        _logger.LogInformation("[WcsBridge] 删除 wcs_tasks: TaskCode={TaskCode}, Affected={Affected}", taskCode, affected);
+        return affected > 0;
     }
 
     private async Task SaveInterfaceLogAsync(string source, string endpoint, string? locationCode, string? containerCode, string requestBody, bool success)

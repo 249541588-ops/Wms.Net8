@@ -4,17 +4,27 @@
     /// 
     /// </summary>
     public static class CommonTypes
-    {             
+    {
+
+        /// <summary>
+        /// 托盘码前缀_化成
+        /// </summary>
+        public const string 托盘码前缀_化成 = "HC";
+
+        /// <summary>
+        /// 托盘码前缀_分容
+        /// </summary>
+        public const string 托盘码前缀_分容 = "FR";
 
         /// <summary>
         /// 空托盘物料
         /// </summary>
-        public const string 空托盘 = "9999999999";
+        public const string 空托盘 = "M999999999999";
 
         /// <summary>
         /// 工装板物料
         /// </summary>
-        public const string 工装板 = "8888888888";
+        public const string 工装板 = "M888888888888";
 
         /// <summary>
         /// 托盘码空
@@ -320,7 +330,7 @@
         /// <summary>
         /// 化成分容柜对应库区
         /// </summary>
-        public static string[] 化成分容柜对应库区 = new string[] { "L4", "L5", "L6" };
+        public static string[] 化成分容柜对应库区 = new string[] { "L1", "L4", "L5", "L6" };
 
         /// <summary>
         /// 倒序对应库区

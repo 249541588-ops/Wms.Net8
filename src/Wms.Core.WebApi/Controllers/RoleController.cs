@@ -6,7 +6,7 @@ using Wms.Core.Domain.Entities;
 using Wms.Core.Domain.Entities.Identity;
 using Wms.Core.Domain.Enums;
 using Wms.Core.Domain.Repositories;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 using Wms.Core.Domain.Common;
 using Wms.Core.WebApi.Extensions;
 using Wms.Core.WebApi.Helpers;
@@ -97,7 +97,7 @@ public class RoleController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -123,7 +123,7 @@ public class RoleController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取对象失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -154,7 +154,7 @@ public class RoleController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "创建失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -202,7 +202,7 @@ public class RoleController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -233,7 +233,7 @@ public class RoleController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "删除失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -313,7 +313,7 @@ public class RoleController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "批量删除失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -324,17 +324,17 @@ public class RoleController : ControllerBase
     [HttpPost("InitialConfiguration")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public Result InitialConfiguration()
+    public async Task<Result> InitialConfiguration()
     {
         try
         {
-            _roleService.InitialConfiguration();
+            await _roleService.InitialConfiguration();
             return Result.Success("初始化成功");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "设置失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -348,7 +348,7 @@ public class RoleController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public Result SettingRoleMenus(int id, [FromBody] List<SettingRoleMenusRequest> request)
+    public async Task<Result> SettingRoleMenus(int id, [FromBody] List<SettingRoleMenusRequest> request)
     {
         try
         {
@@ -363,13 +363,13 @@ public class RoleController : ControllerBase
                 return Result.Fail("记录不存在", "404");
             }
 
-            _roleService.SettingRoleMenus(id, request);
+            await _roleService.SettingRoleMenus(id, request);
             return Result.Success("设置成功");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "设置失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -421,7 +421,7 @@ public class RoleController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取角色菜单失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 }

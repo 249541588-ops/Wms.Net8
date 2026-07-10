@@ -31,6 +31,11 @@ public static class Cst
     public const string OpTypeEmpty = "RegisterEmpty";
 
     /// <summary>
+    /// 任务类型：入库空托
+    /// </summary>
+    public const string 入库空托 = "入库空托";
+
+    /// <summary>
     /// 任务类型：入库双叉
     /// </summary>
     public const string 入库双叉 = "入库双叉";
@@ -49,6 +54,41 @@ public static class Cst
     /// 任务类型：移库
     /// </summary>
     public const string 移库 = "移库";
+
+    /// <summary>
+    /// 任务类型：叠盘
+    /// </summary>
+    public const string 叠盘 = "叠盘";
+
+    /// <summary>
+    /// 任务类型：排废
+    /// </summary>
+    public const string 排废 = "排废";
+
+    /// <summary>
+    /// 任务类型：排废更新
+    /// </summary>
+    public const string 排废更新 = "排废更新";
+
+    /// <summary>
+    /// 任务类型：批次验证
+    /// </summary>
+    public const string 批次验证 = "批次验证";
+
+    /// <summary>
+    /// 任务类型：工艺验证
+    /// </summary>
+    public const string 工艺验证 = "工艺验证";
+
+    /// <summary>
+    /// 任务类型：工艺次数验证
+    /// </summary>
+    public const string 工艺次数验证 = "工艺次数验证";
+
+    /// <summary>
+    /// 任务类型：档位验证
+    /// </summary>
+    public const string 档位验证 = "档位验证";
 
     /// <summary>
     /// 位置来源：起始位置（请求阶段）

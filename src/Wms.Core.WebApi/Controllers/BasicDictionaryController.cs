@@ -10,7 +10,7 @@ using Wms.Core.Domain.Common;
 using Wms.Core.WebApi.Extensions;
 using Wms.Core.WebApi.Filters;
 using Wms.Core.WebApi.Helpers;
-using Wms.Core.Domain.Services;
+using Wms.Core.Application.Ports;
 
 namespace Wms.Core.WebApi.Controllers;
 
@@ -98,7 +98,7 @@ public partial class BasicDictionaryController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取列表失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -125,7 +125,7 @@ public partial class BasicDictionaryController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取对象失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -165,7 +165,7 @@ public partial class BasicDictionaryController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "获取对象失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -210,7 +210,7 @@ public partial class BasicDictionaryController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "创建失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -255,7 +255,7 @@ public partial class BasicDictionaryController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -293,7 +293,7 @@ public partial class BasicDictionaryController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "删除失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 
@@ -327,7 +327,7 @@ public partial class BasicDictionaryController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "设置失败: {Message}", ex.Message);
-            return Result.Fail(ex.Message);
+            return Result.Fail("操作失败");
         }
     }
 

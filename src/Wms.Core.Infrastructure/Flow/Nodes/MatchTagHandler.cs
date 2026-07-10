@@ -51,8 +51,8 @@ public class MatchTagHandler : INodeHandler
                 ResultCodeTypes.数据异常, -1));
         }
 
-        // 入库时：验证所有容器码的工艺匹配
-        if (location.RequestType == Cst.入库)
+        // 入库时：验证所有容器码的工艺匹配（仅标准入库单次执行；入库双叉走循环，各自迭代验证）
+        if (context.FlowCategory == Cst.入库)
         {
             var validated = context.Data.GetValueOrDefault("ValidatedUnitloads") as Dictionary<string, Unitload>;
             if (validated != null)

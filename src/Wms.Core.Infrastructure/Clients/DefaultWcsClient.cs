@@ -3,7 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Wms.Core.Domain.Entities.Transport;
-using Wms.Core.Domain.Interfaces;
+using Wms.Core.Application.Ports;
 using Wms.Core.Domain.Utilities.Response;
 
 namespace Wms.Core.Infrastructure.Clients;
