@@ -722,16 +722,25 @@ public static IServiceCollection AddWmsEngine(this IServiceCollection services)
    - INBOUND_STANDARD_REQUEST / INBOUND_DOUBLE_REQUEST / OUTBOUND_STANDARD_REQUEST / MOVE_STANDARD_REQUEST 的 UpdateLocationCount 节点设为 boundary（SendWcsTask 前的提交点）
    - 已部署环境需手工核对（seeder 增量同步不覆盖已有数据的 IsTransactionBoundary 字段）
 
-### 待办（合并到 main 前必做）
+6. **LocationAllocator 补 2 处 SaveChangesAsync**（commit `9dd99f2`，分段事务落地后发现）
+   - `CleanupEmptyTrayItemsAsync`（第 702-703 行）：4 条 FK 清理 SQL 之后、`ArchiveUnitloadAsync` 之前补 `SaveChangesAsync`
+   - `SplitUnitloadAsync`（第 768-771 行）：items 快照之后、4 条 FK 清理 SQL 之前补 `SaveChangesAsync`
+   - 原因：分段事务落地后，节点不再自建事务，ChangeTracker 在多个节点间累积 Added 实体；当后续节点的 `ExecuteSqlRawAsync` 绕过 ChangeTracker 清理 FK 引用时，未 flush 的实体导致 UPDATE 命中 0 行或 DELETE 触发 FK 约束冲突
+   - 在事务内调用安全：数据仍受当前段保护，失败可 Rollback
+   - 主要触发场景：出库完成阶段的 `CleanupEmptyTray` / `SplitUnitload` 节点（活跃模板必经路径）
 
-- [ ] **全流程手工回归测试**：入库（单托盘/双叉）、出库、移库、叠盘、排废；成功路径数据一致 + 失败路径未提交段数据被回滚
-- [ ] Review 关键 commit：`dba93dc`（分段事务）+ `e6d5fb3`（移除内部事务 + seeder 补 boundary）
-- [ ] 已部署环境核对 4 个模板的 IsTransactionBoundary 配置
-- [ ] （可选）引入 EF Core InMemory，让 4 个 skipped 测试可运行，验证 ExecuteAsync 分段事务调用序列
+### 合并状态（2026-07-10 已合并 main）
+
+PR #1 已通过 "Create a merge commit" 方式合并到 main（merge commit `de17e36`），全部 12 个 commit hash 保留。下述 4 项 Gate 检查均已通过：
+
+- [x] **全流程手工回归测试**：入库（单托盘/双叉）、出库、移库、叠盘、排废；成功路径数据一致 + 失败路径未提交段数据被回滚 —— 未发现异常
+- [x] Review 关键 commit：`dba93dc`（分段事务）+ `e6d5fb3`（移除内部事务 + seeder 补 boundary）+ `9dd99f2`（LocationAllocator SaveChanges 修复）—— 4 个 commit checklist 全部通过
+- [x] 已部署环境核对 4 个模板的 IsTransactionBoundary 配置 —— 一致
+- [ ] （可选）引入 EF Core InMemory，让 4 个 skipped 测试可运行，验证 ExecuteAsync 分段事务调用序列 —— **推迟到 Phase 1 后**（FlowEngineService 构造函数将在 Phase 1 解耦为 IFlowDbContext，届时再做更省事）
 
 ### 下一步
 
-Phase 0 完成后，可进入 Phase 1（Domain.Shared 抽取，低风险）。Phase 0 的 IUnitOfWork/IFlowDbContext 已暂放 Domain/Application，Phase 1 时迁移到 Domain.Shared/Application.Contracts。
+Phase 0 已合并 main，可进入 Phase 1（Domain.Shared 抽取，低风险）。Phase 0 的 IUnitOfWork/IFlowDbContext 已暂放 Domain/Application，Phase 1 时迁移到 Domain.Shared/Application.Contracts。
 
 ---
 
