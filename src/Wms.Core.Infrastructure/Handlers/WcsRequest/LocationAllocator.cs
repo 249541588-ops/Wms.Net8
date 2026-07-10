@@ -699,6 +699,9 @@ public class LocationAllocator
             await db.Database.ExecuteSqlRawAsync(
                 "UPDATE UnionUnitloadItems SET UnitloadId = NULL WHERE UnitloadId = {0}", uid);
 
+            // 1a.5 刷新 ChangeTracker → DB，确保未持久化的实体先写入数据库（同 SplitUnitloadAsync）
+            await db.SaveChangesAsync();
+
             // 1b. 归档 + 删除（复用现有方法）
             await ArchiveUnitloadAsync(db, unitload, archiveReason, $"空托盘清理 ContainerCode={containerCode}");
 
@@ -761,6 +764,11 @@ public class LocationAllocator
                         d.Capacity, d.KVal, d.CCP, d.Dcirnz, d.Sequence, d.Comment, d.LocIndex, d.Status
                     }).ToList()
             }).ToList();
+
+        // 1.5 刷新 ChangeTracker → DB，确保未持久化的 Flow/Stock 等实体先写入数据库
+        // 这样后续 ExecuteSqlRawAsync 清理 UnitloadId FK 引用时才能命中这些记录
+        // （否则 Added 状态的实体还在 ChangeTracker，UPDATE 命中 0 行，DELETE Unitload 时触发 FK 冲突）
+        await db.SaveChangesAsync();
 
         // 2. 清除 FK 引用（DB 级 FK 约束）
         await db.Database.ExecuteSqlRawAsync(
