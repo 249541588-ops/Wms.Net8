@@ -692,6 +692,49 @@ public static IServiceCollection AddWmsEngine(this IServiceCollection services)
 
 ---
 
+## 附录 A：Phase 0 执行记录（2026-07-10 完成）
+
+分支 `feature/phase0-refactor`，9 个 commit（`19de7b1` → `e6d5fb3`），编译 0 errors，25 单测通过 + 4 skipped。Final review 无阻塞。
+
+### 与计划的偏差（执行中发现）
+
+1. **IFlowDbContext 规模扩大**（A.2）
+   - 计划：约 15-20 个 DbSet
+   - 实际：17 个 DbSet（Locations/Unitloads/UnitloadItems/UnitloadItemDetails/TransTasks/Flows/FlowInstances/FlowNodeLogs/FlowTemplates/FlowNodes + Racks/Laneways/UnitloadOps/ArchivedTask/ArchivedUnitload/ArchivedUnitloadItem/ArchivedUnitloadItemDetail）+ Set<T> 兜底 + Database + SaveChangesAsync/SaveChanges + Entry<TEntity>
+   - 原因：LocationAllocator 辅助类（被节点处理器调用）用了 Racks/Laneways/Archived*/UnitloadOps 等，必须通过接口暴露
+   - 教训：IFlowDbContext 设计时不能只看节点处理器，还要看节点调用的辅助类（LocationAllocator 等）
+
+2. **LocationAllocator 全类迁移到 IFlowDbContext**（A 的范围扩展）
+   - 计划：只改 FlowContext + 7 处实例化点
+   - 实际：LocationAllocator 的 8 个静态方法 + 构造函数 + 字段都改为 IFlowDbContext（因为节点处理器把 context.Db 传给 LocationAllocator）
+
+3. **MergeUnitloadsHandler / WasteDisposalCaptureNode 移除内部事务**（D.1 运行时冲突的解决）
+   - 计划：确保这两个节点前有 IsTransactionBoundary，让外层段先 Commit，节点可自建事务
+   - 实际：直接移除节点内部自建事务，依赖外层分段事务保护
+   - 语义变化：节点失败回滚范围从"节点内"扩大到"整个段（回到上个 boundary）"
+   - WasteDisposalCaptureNode 的 HangKe.CancelTrayAsync 外部调用现在在最终事务提交前执行（模板 9 IsActive=false，暂可接受；长期应拆分为 DB 清理 + PostTransaction 通知两节点）
+
+4. **重构 C 只移 2 文件**（执行确认）
+   - BackgroundTaskQueue + HostedService 移到 Infrastructure/Services
+   - TranslationService 留 WebApi（HTTP 上下文关注点，依赖 LanguagePackHelper，留符合 DIP）
+
+5. **Seeder 补 4 处 IsTransactionBoundary**（任务 11）
+   - INBOUND_STANDARD_REQUEST / INBOUND_DOUBLE_REQUEST / OUTBOUND_STANDARD_REQUEST / MOVE_STANDARD_REQUEST 的 UpdateLocationCount 节点设为 boundary（SendWcsTask 前的提交点）
+   - 已部署环境需手工核对（seeder 增量同步不覆盖已有数据的 IsTransactionBoundary 字段）
+
+### 待办（合并到 main 前必做）
+
+- [ ] **全流程手工回归测试**：入库（单托盘/双叉）、出库、移库、叠盘、排废；成功路径数据一致 + 失败路径未提交段数据被回滚
+- [ ] Review 关键 commit：`dba93dc`（分段事务）+ `e6d5fb3`（移除内部事务 + seeder 补 boundary）
+- [ ] 已部署环境核对 4 个模板的 IsTransactionBoundary 配置
+- [ ] （可选）引入 EF Core InMemory，让 4 个 skipped 测试可运行，验证 ExecuteAsync 分段事务调用序列
+
+### 下一步
+
+Phase 0 完成后，可进入 Phase 1（Domain.Shared 抽取，低风险）。Phase 0 的 IUnitOfWork/IFlowDbContext 已暂放 Domain/Application，Phase 1 时迁移到 Domain.Shared/Application.Contracts。
+
+---
+
 ## 总结
 
 **核心建议**：用户明确诉求是"内部权限隔离"，必须用物理仓库分离 + DLL 二进制引用，原文档的 ProjectReference 方案无法满足。
