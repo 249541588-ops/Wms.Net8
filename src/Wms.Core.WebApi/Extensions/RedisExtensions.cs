@@ -113,10 +113,6 @@ public static class RedisExtensions
         // 注册全局操作日志过滤器
         services.AddScoped<OperationLogFilter>();
 
-        // 后台任务队列（替代 fire-and-forget Task.Run）
-        services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
-        services.AddHostedService<BackgroundTaskQueueHostedService>();
-
         // 注册报表服务
         services.AddScoped<IReportService, ReportService>();
         services.AddScoped<IReportExportService, ReportExportService>();

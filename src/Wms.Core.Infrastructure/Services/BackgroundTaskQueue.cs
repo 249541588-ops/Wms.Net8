@@ -1,7 +1,7 @@
 using System.Threading.Channels;
 using Wms.Core.Application.Ports;
 
-namespace Wms.Core.WebApi.Services;
+namespace Wms.Core.Infrastructure.Services;
 
 /// <summary>
 /// Channel 实现的后台任务队列

@@ -77,6 +77,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<EntityFactory>();
         services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
 
+        // 后台任务队列（从 WebApi 层移入，基于 Channel 的有序消费）
+        services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
+        services.AddHostedService<BackgroundTaskQueueHostedService>();
+
         // 注册流程引擎（Scoped - 每个请求一个实例）
         services.AddScoped<IFlowEngine, FlowEngineService>();
 

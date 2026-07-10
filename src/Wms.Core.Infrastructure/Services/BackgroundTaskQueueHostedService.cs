@@ -2,7 +2,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Wms.Core.Application.Ports;
 
-namespace Wms.Core.WebApi.Services;
+namespace Wms.Core.Infrastructure.Services;
 
 /// <summary>
 /// 后台任务队列消费者（HostedService，有序处理队列中的任务）
