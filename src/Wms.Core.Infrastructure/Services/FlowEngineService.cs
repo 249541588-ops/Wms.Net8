@@ -99,6 +99,9 @@ public class FlowEngineService : IFlowEngine
 
         WcsResult? result = null;
 
+        // ★ 分段事务：开启第一段事务
+        await context.UnitOfWork.BeginTransactionAsync();
+
         foreach (var node in nodes)
         {
             instance.CurrentNodeOrder = node.StepOrder;
@@ -154,10 +157,11 @@ public class FlowEngineService : IFlowEngine
                     break;
                 }
 
-                // ★ 事务断点：此节点后执行 SaveChanges
+                // ★ 分段事务：boundary 节点处提交当前段并开启新段
                 if (node.IsTransactionBoundary)
                 {
-                    await context.Db.SaveChangesAsync();
+                    await context.UnitOfWork.CommitAsync();
+                    await context.UnitOfWork.BeginTransactionAsync();
                 }
 
                 if (nodeResult.Stop) break;
@@ -173,7 +177,16 @@ public class FlowEngineService : IFlowEngine
                 result = ApiResultHelper.WcsFail($"节点 {node.NodeName} 执行失败: {ex.Message}",
                     ResultCodeTypes.程序异常, -1);
 
-                if (node.OnFailure == "Skip") continue;
+                // ★ 分段事务：回滚当前段
+                try { await context.UnitOfWork.RollbackAsync(); }
+                catch (Exception rbEx) { _logger.LogWarning(rbEx, "[FlowEngine] Rollback 失败: {Message}", rbEx.Message); }
+
+                // 如果 OnFailure == "Skip"，重新开启新段继续执行
+                if (node.OnFailure == "Skip")
+                {
+                    await context.UnitOfWork.BeginTransactionAsync();
+                    continue;
+                }
                 break;
             }
         }
@@ -183,19 +196,25 @@ public class FlowEngineService : IFlowEngine
         var finalErrorMsg = instance.ErrorMsg;
         if (result == null)
         {
-            // ★ 最终 SaveChanges：持久化最后一个事务断点之后所有节点的修改
+            // ★ 分段事务：成功路径，提交最后一段（CommitAsync 内部包含 SaveChanges）
             try
             {
-                await context.Db.SaveChangesAsync();
+                await context.UnitOfWork.CommitAsync();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[FlowEngine] 请求阶段最终 SaveChanges 失败: {Message}", ex.Message);
+                _logger.LogError(ex, "[FlowEngine] 请求阶段最终 Commit 失败: {Message}", ex.Message);
                 instance.Status = "Failed";
                 instance.ErrorMsg = ex.Message;
                 result = ApiResultHelper.WcsFail("服务器内部错误", ResultCodeTypes.程序异常, -1);
             }
-            result = ApiResultHelper.WcsSuccess("处理成功", ResultCodeTypes.一, 1);
+            result ??= ApiResultHelper.WcsSuccess("处理成功", ResultCodeTypes.一, 1);
+        }
+        else
+        {
+            // ★ 分段事务：失败路径，回滚未提交的当前段
+            try { await context.UnitOfWork.RollbackAsync(); }
+            catch (Exception rbEx) { _logger.LogWarning(rbEx, "[FlowEngine] 失败路径 Rollback 忽略: {Message}", rbEx.Message); }
         }
 
         // ★ 异步保存实例最终状态 + 节点日志（不影响主流程性能）
