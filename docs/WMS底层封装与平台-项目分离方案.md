@@ -1152,6 +1152,170 @@ services.AddWmsEngine(opt => opt.AddLocationRule<SSRule04HcLx>());
 
 ---
 
+## 附录 F：Phase 4 执行记录（2026-07-16，步骤 ①②③ 完成）
+
+Phase 3 合并 main（2026-07-15，commit 938d413 + d0d4b9b）后，按方案第五章 Phase 4 执行物理仓库分离。本次完成步骤 ①②③（建底层目录 + pack.ps1 + 项目层 csproj 切换），步骤 ④（sync-platform.ps1）和 ⑤（拆 sln + 权限隔离）遗留后续。
+
+### F.1 实施概况
+
+| 维度 | 实际情况 |
+|------|---------|
+| 实施日期 | 2026-07-16 |
+| 仓库状态 | Wms.Net8 是 git 仓库（remote: github.com/249541588-ops/Wms.Net8.git），Phase 1/2/3 的 122 处改动在本次会话开头提交到 main（938d413 + d0d4b9b），建立 Phase 4 干净起点 |
+| wms-platform 形态 | **本地目录暂不建 git**（用户选择）；位置 `f:/Project/Wms.Core/wms-platform/`（与 Wms.Net8 同级） |
+| 底层项目数 | **5 个**（原方案 6 个，Wms.Core.Logging 是 aspirational 尚未抽取） |
+| 项目层切换 | Infrastructure + WebApi 两个 csproj 的 ProjectReference → Reference HintPath |
+| 编译结果 | 7 主项目全部 0 errors；wms-platform 独立编译 0 errors；5 DLL 正确传递到 WebApi/bin |
+
+### F.2 与原方案的偏差
+
+#### 偏差 1：5 个底层项目而非 6 个（Wms.Core.Logging 未创建）
+
+**原方案**：第六章列出 6 个底层项目，含 `Wms.Core.Logging`（日志领域接口 + DTO）。
+
+**执行中探索**（Explore agent 彻底搜索）发现：
+- **IInterfaceLogStore 接口不存在**：方案提到的核心抽象尚未创建
+- **SaveInterfaceLogAsync 代码重复 3 处**：WcsController（L490-503）、HangkeController（L278-291）、DatabaseWcsTaskBridge 各有一份，应统一到 IInterfaceLogStore
+- **无任何 Log DTO**：LogController 直接返回匿名类型
+- **日志实体已在 Domain**：InterfaceLog、SystemLog、FlowNodeLog、UnitloadProcessRouteLog 都在 Domain/Entities/，无需迁移
+
+**决策 P1**：创建 Wms.Core.Logging 需要新建 IInterfaceLogStore 接口 + 重构 3 处重复代码，属于**新功能开发**，不是迁移。本次跳过，作为独立技术债在 Phase 4 完全落地后处理。
+
+#### 偏差 2：wms-platform 本地目录暂不建 git
+
+**原方案**：第五章 Phase 4 步骤 1 "创建底层仓库 `wms-platform`"——隐含 git 仓库 + 远程。
+
+**实际**：用户选择"本地目录暂不建 git"——先验证 pack.ps1 + HintPath 切换能跑通，git 仓库与 remote 后续再搭。
+
+**影响**：
+- pack.ps1 中 git 字段（commit/branch）兜底为 "no-git"
+- sync-platform.ps1（步骤 ④）中的 `git fetch origin artifacts` 逻辑需要调整（改为本地路径复制）
+- "内部权限隔离"诉求本次**未真正实现**——底层源码仍在 Wms.Net8/src/ 下（步骤 ⑤ 拆 sln 时才移除）
+
+#### 偏差 3：测试项目未切换（遗留项）
+
+**原方案**：Phase 4 步骤 3 "项目层 csproj 切换"——隐含所有项目层项目。
+
+**实际**：测试项目（UnitTests + IntegrationTests）**保留 ProjectReference**。理由：
+1. 用户本次范围限 ①②③（主项目层）
+2. 测试项目受 E-SafeNet 阻塞，切换后无法命令行验证
+3. UnitTests 直接引 Domain，切换为 DLL 引用需评估 Domain 类型在测试代码中的使用面
+
+**后续**：步骤 ⑤（拆 sln）时统一处理。
+
+### F.3 关键技术发现
+
+| # | 发现 | 影响 |
+|---|------|------|
+| R1 | Wms.Core.Logging 是 aspirational（IInterfaceLogStore 不存在） | 本次 5 个底层项目，Logging 作为独立技术债 |
+| R2 | `powershell -File` 调用时 `$PSScriptRoot` 在 param 默认值中为空 | pack.ps1 用 `$PSCommandPath` + `Split-Path` 兜底 |
+| R3 | **Reference HintPath 不传递 NuGet analyzer**（关键） | Infrastructure 显式引 Riok.Mapperly 4.3.1；通用规则：切换时识别原传递依赖中的 analyzer 包 |
+| R4 | DebugType=embedded + EmbedAllSources=true 生效 | artifacts/ 无独立 .pdb，源码内嵌 DLL，满足"无 .cs 但能调试步入" |
+| R5 | 测试项目未切换（保留 ProjectReference） | 遗留项，步骤 ⑤ 统一处理 |
+| R6 | lib/platform 的 gitignore 策略 | DLL 是构建产物不入库；version.json + README 入库作参考 |
+
+### F.4 R3 详解：Reference HintPath 不传递 analyzer
+
+本次最重要的技术发现。`Riok.Mapperly` 4.3.1 是源代码生成器（analyzer），在 Application.csproj 中引用。
+
+**切换前**（ProjectReference）：
+```
+Infrastructure → ProjectReference → Application.csproj
+                                  → Application 引用 Riok.Mapperly
+                                  → 编译 Infrastructure 时，Riok.Mapperly analyzer 自动加载
+                                  → WmsMapper.cs 的 [Mapper] partial class 生成代码成功
+```
+
+**切换后**（Reference HintPath）：
+```
+Infrastructure → Reference Application.dll
+              → DLL 类型引用正常 ✓
+              → 但 Riok.Mapperly analyzer 的 Roslyn 配置不传递 ✗
+              → WmsMapper.cs 的 [Mapper] partial class 无生成代码
+              → CS8795: 分部方法必须具有实现部分
+```
+
+**修正**：Infrastructure.csproj 显式添加：
+```xml
+<PackageReference Include="Riok.Mapperly" Version="4.3.1" />
+```
+
+**通用规则**：从 ProjectReference 切换到 DLL 引用时，必须识别原传递依赖中的 analyzer/源代码生成器包，并在项目层 csproj 显式引用。识别方法：grep `<PackageReference>` 中 `IncludeAssets` 含 `analyzers` 的包，或包类型为 "source generator"。
+
+### F.5 关键决策汇总（P1-P7）
+
+| # | Decision | Status |
+|---|----------|--------|
+| P1 | 5 个底层项目（不含 Wms.Core.Logging） | ✓ 已定 |
+| P2 | wms-platform 本地目录暂不建 git | ✓ 用户确认 |
+| P3 | pack.ps1 用 $PSCommandPath 兜底 $PSScriptRoot | ✓ 已实施 |
+| P4 | Infrastructure 显式引 Riok.Mapperly 4.3.1 | ✓ 已实施 |
+| P5 | 测试项目保留 ProjectReference | ✓ 已定（遗留项） |
+| P6 | lib/platform/*.dll 加入 .gitignore | ✓ 已实施 |
+| P7 | DebugType=embedded + EmbedAllSources=true | ✓ 已验证 |
+
+### F.6 产出物清单
+
+**wms-platform 目录**（`f:/Project/Wms.Core/wms-platform/`）：
+- `src/`：5 个底层项目源码（Domain.Shared / Domain / Application.Contracts / Application / Engine）
+- `artifacts/`：5 个 DLL + version.json
+- `pack.ps1`：打包脚本
+- `PLATFORM_VERSION.txt`：版本号（1.0.0）
+- `README.md`：底层仓库说明
+
+**Wms.Net8 仓库变更**：
+- `lib/platform/`：5 DLL（gitignore）+ version.json + README.md
+- `src/Wms.Core.Infrastructure/Wms.Core.Infrastructure.csproj`：ProjectReference → Reference HintPath + 显式 Riok.Mapperly
+- `src/Wms.Core.WebApi/Wms.Core.WebApi.csproj`：同上
+- `.gitignore`：添加 lib/platform/*.dll + *.pdb + *.xml
+
+### F.7 Gate 检查清单
+
+| Gate | 预期 | 实际 | 状态 |
+|------|------|------|------|
+| wms-platform 独立编译 | 5 项目 0 errors | 0 errors / 656 warnings（XML 注释） | ✓ |
+| pack.ps1 产出 5 DLL | artifacts/ 含 5 个 .dll | ✓ Domain.Shared/Domain/Contracts/Application/Engine | ✓ |
+| EmbedAllSources 生效 | 无独立 .pdb 文件 | ✓ 仅 5 .dll + version.json | ✓ |
+| Infrastructure DLL 引用编译 | 0 errors | 0 errors / 273 warnings | ✓ |
+| WebApi DLL 引用编译 | 0 errors | 0 errors / 133 warnings | ✓ |
+| DLL 传递到 WebApi/bin | 5 底层 DLL 在输出目录 | ✓ 全部存在 | ✓ |
+| 回退可行 | HintPath 改回 ProjectReference | 未实际回退验证，csproj 改动可逆 | ℹ️ 设计保证 |
+| sln 完整编译 | dotnet build sln 通过 | 未验证（E-SafeNet 阻塞测试项目，已知问题） | ⏳ 需 VS |
+| 运行时验证 | WebApi 启动 + Flow 引擎工作 | 未验证 | ⏳ 需用户 |
+
+### F.8 下一步
+
+1. **用户在 VS 中验证**：
+   - sln 完整编译（绕过 E-SafeNet 命令行问题）
+   - WebApi 运行时启动 + 简单 API 调用验证底层 DLL 加载正常
+   - 调试器 F11 步入底层代码（验证 EmbedAllSources 源码嵌入生效）
+2. **Phase 4 步骤 ④ sync-platform.ps1**（后续会话）：
+   - 编写同步脚本（本地目录模式，不走 git artifacts 分支）
+   - 加入版本比对逻辑（对比 version.json）
+3. **Phase 4 步骤 ⑤ 拆 sln + 权限隔离**（后续会话）：
+   - 从 Wms.Net8.sln 移除 5 个底层项目
+   - 测试项目切换为 DLL 引用
+   - src/ 下 5 个底层项目目录移除（或归档）
+   - 配置 GitHub 仓库权限（如建独立 wms-platform repo）
+4. **Wms.Core.Logging**（独立技术债）：
+   - 新建 IInterfaceLogStore 接口
+   - 重构 WcsController / HangkeController / DatabaseWcsTaskBridge 的 SaveInterfaceLogAsync 重复代码
+   - 创建 Wms.Core.Logging 项目（仅接口 + DTO）
+   - 作为底层 platform 的第 6 个项目
+
+### F.9 Phase 3 遗留项的状态更新
+
+附录 E "下一步" 中提到的 Phase 4 准备项：
+- ✓ **底层仓库建立**：wms-platform 本地目录已建（P2 本地模式）
+- ✓ **pack.ps1 + DLL 产出**：5 DLL + version.json 正确产出
+- ✓ **项目层 csproj 切换**：Infrastructure + WebApi 已切（主项目层）
+- ⏳ **sync-platform.ps1**：遗留步骤 ④
+- ⏳ **拆 sln + 权限隔离**：遗留步骤 ⑤
+
+附录 E 中标记为"推迟到 Phase 3 后"的 EF Core InMemory（让 4 个 skipped 测试可运行）继续推迟到 Phase 4 完全落地后。
+
+---
+
 ## 总结
 
 **核心建议**：用户明确诉求是"内部权限隔离"，必须用物理仓库分离 + DLL 二进制引用，原文档的 ProjectReference 方案无法满足。

@@ -53,10 +53,31 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Wms.Core.Application\Wms.Core.Application.csproj" />
-    <ProjectReference Include="..\Wms.Core.Domain\Wms.Core.Domain.csproj" />
-    <ProjectReference Include="..\Wms.Core.Engine\Wms.Core.Engine.csproj" />
     <ProjectReference Include="..\Wms.Core.Infrastructure\Wms.Core.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <!-- 底层平台 DLL 引用（从 lib/platform/ 加载，由 sync-platform.ps1 从 wms-platform 同步） -->
+  <ItemGroup>
+    <Reference Include="Wms.Core.Domain.Shared">
+      <HintPath>..\..\lib\platform\Wms.Core.Domain.Shared.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Wms.Core.Domain">
+      <HintPath>..\..\lib\platform\Wms.Core.Domain.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Wms.Core.Application.Contracts">
+      <HintPath>..\..\lib\platform\Wms.Core.Application.Contracts.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Wms.Core.Application">
+      <HintPath>..\..\lib\platform\Wms.Core.Application.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Wms.Core.Engine">
+      <HintPath>..\..\lib\platform\Wms.Core.Engine.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>

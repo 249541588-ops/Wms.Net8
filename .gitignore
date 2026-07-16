@@ -1,5 +1,10 @@
 ## .NET Core / .NET 8.0
 
+# Platform DLL 同步目录（由 sync-platform.ps1 从 wms-platform 同步，不入库）
+lib/platform/*.dll
+lib/platform/*.pdb
+lib/platform/*.xml
+
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/
