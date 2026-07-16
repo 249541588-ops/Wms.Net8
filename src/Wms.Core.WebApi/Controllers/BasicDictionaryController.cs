@@ -43,6 +43,29 @@ public partial class BasicDictionaryController : ControllerBase
     }
 
     /// <summary>
+    /// 根据被修改记录的 ParentId 清除受影响的父级字典缓存。
+    /// parentId==0 表示被修改记录自身是父级，用 selfNo；否则查出其父级记录的 No。
+    /// </summary>
+    /// <param name="parentId">被修改记录的 ParentId</param>
+    /// <param name="selfNo">被修改记录自身的 No（仅 parentId==0 时使用）</param>
+    private void ClearCacheFor(int parentId, string? selfNo)
+    {
+        string? noToClear = null;
+        if (parentId <= 0)
+        {
+            noToClear = selfNo;
+        }
+        else
+        {
+            var parent = _repository.GetById(parentId);
+            noToClear = parent?.No;
+        }
+
+        if (!string.IsNullOrWhiteSpace(noToClear))
+            _basicDictionaryService.ClearCache(noToClear);
+    }
+
+    /// <summary>
     /// 获取列表
     /// </summary>
     /// <param name="keyword">搜索关键字（可选）</param>
@@ -205,6 +228,9 @@ public partial class BasicDictionaryController : ControllerBase
 
             var createdMaterial = _repository.Add(model);
 
+            // 清除受影响父级字典的缓存，保证后台修改即时生效
+            ClearCacheFor(request.ParentId, request.No);
+
             return Result<BasicDictionary>.Success(model, "创建成功");
         }
         catch (Exception ex)
@@ -234,6 +260,10 @@ public partial class BasicDictionaryController : ControllerBase
                 return Result.Fail("记录不存在", "404");
             }
 
+            // 记录更新前的位置，用于后续清除旧/新父级缓存
+            var oldParentId = model.ParentId;
+            var oldNo = model.No;
+
             // 更新字段
             model.ParentId = request.ParentId;
             model.Sort = request.Sort;
@@ -249,6 +279,11 @@ public partial class BasicDictionaryController : ControllerBase
             model.ModifiedBy = request.ModifiedBy;
 
             _repository.Update(model);
+
+            // 清除旧位置和新位置的父级缓存（ParentId 或 No 可能变更）
+            ClearCacheFor(oldParentId, oldNo);
+            if (request.ParentId != oldParentId)
+                ClearCacheFor(request.ParentId, request.No);
 
             return Result<BasicDictionary>.Success(model, "更新成功");
         }
@@ -288,6 +323,10 @@ public partial class BasicDictionaryController : ControllerBase
             }
 
             _repository.Delete(id);
+
+            // 清除受影响父级缓存（model 为删除前读出的记录）
+            ClearCacheFor(model.ParentId, model.ParentId <= 0 ? model.No : null);
+
             return Result.Success("删除成功");
         }
         catch (Exception ex)
@@ -321,6 +360,9 @@ public partial class BasicDictionaryController : ControllerBase
             model.ModifiedBy = request.ModifiedBy;
 
             _repository.Update(model);
+
+            // 清除受影响父级缓存
+            ClearCacheFor(model.ParentId, model.ParentId <= 0 ? model.No : null);
 
             return Result.Success("设置成功");
         }

@@ -28,6 +28,7 @@ public class InboundCompletionHandler : ITaskCompletionHandler
 
     private readonly WmsDbContext _db;
     private readonly IUnitloadService _unitloadService;
+    private readonly IProcessRouteService _processRouteService;
     private readonly IMesClient _mesClient;
     private readonly IHangKeClient _hangkeClient;
     private readonly MesClientOptions _mesOptions;
@@ -40,6 +41,7 @@ public class InboundCompletionHandler : ITaskCompletionHandler
     public InboundCompletionHandler(
         WmsDbContext db,
         IUnitloadService unitloadService,
+        IProcessRouteService processRouteService,
         IMesClient mesClient,
         IHangKeClient hangkeClient,
         IOptions<MesClientOptions> mesOptions,
@@ -48,6 +50,7 @@ public class InboundCompletionHandler : ITaskCompletionHandler
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _unitloadService = unitloadService ?? throw new ArgumentNullException(nameof(unitloadService));
+        _processRouteService = processRouteService ?? throw new ArgumentNullException(nameof(processRouteService));
         _mesClient = mesClient ?? throw new ArgumentNullException(nameof(mesClient));
         _hangkeClient = hangkeClient ?? throw new ArgumentNullException(nameof(hangkeClient));
         _mesOptions = mesOptions?.Value ?? throw new ArgumentNullException(nameof(mesOptions));
@@ -111,8 +114,15 @@ public class InboundCompletionHandler : ITaskCompletionHandler
                     if (unitload != null)
                     {
                         // 工序更新：NextOperation → CurrentOperation，再查询新的 NextOperation
-                        unitload.CurrentOperation = unitload.NextOperation;
-                        unitload.NextOperation = _unitloadService.GetNextOperation(unitload.CurrentOperation);
+                        if (unitload.ProcessRouteVersionId.HasValue)
+                        {
+                            await _processRouteService.AdvanceOperationAsync(unitload, null);
+                        }
+                        else
+                        {
+                            unitload.CurrentOperation = unitload.NextOperation;
+                            unitload.NextOperation = _unitloadService.GetNextOperation(unitload.CurrentOperation);
+                        }
 
                         unitload.BeingMoved = false;
                         unitload.Allocated = false;

@@ -1,4 +1,3 @@
-using Wms.Core.Application.DTOs;
 using Wms.Core.Domain.Common;
 using Wms.Core.Domain.Entities;
 using Wms.Core.Domain.Entities.Warehouse;
@@ -8,16 +7,14 @@ using Wms.Core.Domain.ValueObjects;
 namespace Wms.Core.Application.Ports;
 
 /// <summary>
-/// 货位数据接口
+/// 出库口接口
 /// </summary>
-public interface ILocationService
+public interface IPortService
 {
     /// <summary>
-    /// 获取货位
+    /// 通过编码获取明细
     /// </summary>
-    /// <param name="locationCode"></param>
-    /// <returns></returns>
-    Location GetLocation(string locationCode);
+    Task<Result> CreatePort(CreatePortRequest No);
 
 
 }

@@ -56,9 +56,10 @@ public class UnitloadService : IUnitloadService
     private readonly IBasicDictionaryService _basicDictionaryService;
     private readonly ILocationService _locationService;
     private readonly IMemoryCache _cache;
+    private readonly IProcessRouteService _processRouteService;
 
     /// <summary>
-    /// 
+    ///
     /// </summary>
     /// <param name="db"></param>
     /// <param name="repository"></param>
@@ -67,6 +68,7 @@ public class UnitloadService : IUnitloadService
     /// <param name="locationService"></param>
     /// <param name="logger"></param>
     /// <param name="cache"></param>
+    /// <param name="processRouteService"></param>
     /// <exception cref="ArgumentNullException"></exception>
     public UnitloadService(
         WmsDbContext db,
@@ -75,7 +77,8 @@ public class UnitloadService : IUnitloadService
         IBasicDictionaryService basicDictionaryService,
         ILocationService locationService,
         ILogger<UnitloadService> logger,
-        IMemoryCache cache
+        IMemoryCache cache,
+        IProcessRouteService processRouteService
         )
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
@@ -85,6 +88,7 @@ public class UnitloadService : IUnitloadService
         _locationService = locationService ?? throw new ArgumentNullException(nameof(locationService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+        _processRouteService = processRouteService ?? throw new ArgumentNullException(nameof(processRouteService));
     }
 
     /// <summary>
@@ -192,6 +196,9 @@ public class UnitloadService : IUnitloadService
 
             _db.Set<Unitload>().Add(unitload);
             _db.SaveChanges();
+
+            // 5.1.1 绑定工艺路线（双模式：有匹配路线则绑定，否则保持硬编码模式）
+            await _processRouteService.BindRouteAsync(unitload, material.MaterialId);
 
             // 5.2 创建 UnitloadItem
             var unitloadItem = new UnitloadItem
@@ -638,6 +645,9 @@ public class UnitloadService : IUnitloadService
             _db.Set<Unitload>().Add(unitload);
             _db.SaveChanges();
 
+            // 5.1.1 绑定工艺路线（双模式：有匹配路线则绑定，否则保持硬编码模式）
+            await _processRouteService.BindRouteAsync(unitload, material.MaterialId);
+
             // 5.2 创建 UnitloadItem
             var unitloadItem = new UnitloadItem
             {
@@ -1072,6 +1082,11 @@ public class UnitloadService : IUnitloadService
                 IsAdvance = archivedUnitload.IsAdvance,
                 IsSupplement = archivedUnitload.IsSupplement,
                 IsToHangke = archivedUnitload.IsToHangke,
+                ProcessRouteId = archivedUnitload.ProcessRouteId,
+                ProcessRouteVersionId = archivedUnitload.ProcessRouteVersionId,
+                CurrentStepId = archivedUnitload.CurrentStepId,
+                NextStepId = archivedUnitload.NextStepId,
+                IsAwaitingBranchSelection = archivedUnitload.IsAwaitingBranchSelection,
                 Version = 0
             };
             _db.Set<Unitload>().Add(unitload);

@@ -11,5 +11,12 @@ internal class ArchivedUnitloadConfiguration : IEntityTypeConfiguration<Archived
         builder.ToTable("ArchivedUnitloads");
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).ValueGeneratedOnAdd();
+
+        // 工艺路线相关字段
+        builder.Property(x => x.ProcessRouteId).HasColumnName("ProcessRouteId");
+        builder.Property(x => x.ProcessRouteVersionId).HasColumnName("ProcessRouteVersionId");
+        builder.Property(x => x.CurrentStepId).HasColumnName("CurrentStepId");
+        builder.Property(x => x.NextStepId).HasColumnName("NextStepId");
+        builder.Property(x => x.IsAwaitingBranchSelection).HasColumnName("IsAwaitingBranchSelection").HasDefaultValue(false);
     }
 }

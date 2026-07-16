@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Wms.Core.Domain</RootNamespace>
+    <AssemblyName>Wms.Core.Domain.Shared</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Version>1.0.0</Version>
+    <Authors>WMS Team</Authors>
+    <Description>WMS Core Domain Shared Layer - Result, Enums, Constants, Interfaces, Abstractions (零依赖底层基础类型)</Description>
+  </PropertyGroup>
+
+  <!--
+    本项目刻意保持零 PackageReference / 零 ProjectReference。
+    仅承载 POCO / 接口 / 枚举 / 静态常量类，是整个 Wms 依赖图的叶子节点。
+    命名空间保留为 Wms.Core.Domain.*（而非 Wms.Core.Domain.Shared.*），
+    以便下游代码在物理拆分后无需修改任何 using 语句。
+  -->
+
+</Project>

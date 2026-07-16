@@ -195,6 +195,31 @@ public class Unitload : IEntity<int>, IAuditable
     public virtual int IsToHangke { get; set; } = 0;
 
     /// <summary>
+    /// 绑定的工艺路线ID（null 表示使用硬编码模式）
+    /// </summary>
+    public virtual int? ProcessRouteId { get; set; }
+
+    /// <summary>
+    /// 锁定的工艺路线版本ID（快照引用，路线修改不影响运行中托盘）
+    /// </summary>
+    public virtual int? ProcessRouteVersionId { get; set; }
+
+    /// <summary>
+    /// 当前在路线中的步骤ID
+    /// </summary>
+    public virtual int? CurrentStepId { get; set; }
+
+    /// <summary>
+    /// 下一个步骤ID（分支等待人工选择时为 null）
+    /// </summary>
+    public virtual int? NextStepId { get; set; }
+
+    /// <summary>
+    /// 是否等待分支选择（true 时前端需弹出选择界面）
+    /// </summary>
+    public virtual bool? IsAwaitingBranchSelection { get; set; } = false;
+
+    /// <summary>
     /// 库位
     /// </summary>
     public virtual Location? Location { get; set; }

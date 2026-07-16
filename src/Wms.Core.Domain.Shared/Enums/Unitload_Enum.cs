@@ -15,7 +15,7 @@ namespace Wms.Core.Domain.Enums
             /// <summary>
             /// 
             /// </summary>
-            空托绑盘 = 1,
+            //空托绑盘 = 1,
 
             /// <summary>
             /// 

@@ -11,6 +11,7 @@ using Wms.Core.Domain.Entities.StockFlow;
 using Wms.Core.Domain.Entities.Archive;
 using Wms.Core.Domain.Entities.System;
 using Wms.Core.Domain.Entities.Flow;
+using Wms.Core.Domain.Entities.ProcessRoute;
 using Wms.Core.Domain.Interfaces;
 using Wms.Core.Application.Persistence;
 using Wms.Core.Domain.Abstractions;
@@ -124,6 +125,14 @@ public class WmsDbContext : DbContext, IFlowDbContext, IUnitOfWork
     public DbSet<FlowNode> FlowNodes { get; set; }
     public DbSet<FlowInstance> FlowInstances { get; set; }
     public DbSet<FlowNodeLog> FlowNodeLogs { get; set; }
+
+    // 工艺路线
+    public DbSet<ProcessRoute> ProcessRoutes { get; set; }
+    public DbSet<ProcessRouteVersion> ProcessRouteVersions { get; set; }
+    public DbSet<ProcessRouteStep> ProcessRouteSteps { get; set; }
+    public DbSet<ProcessRouteTransition> ProcessRouteTransitions { get; set; }
+    public DbSet<ProcessRouteMaterialBinding> ProcessRouteMaterialBindings { get; set; }
+    public DbSet<UnitloadProcessRouteLog> UnitloadProcessRouteLogs { get; set; }
 
     // 报表
     public DbSet<ReportConfig> ReportConfigs { get; set; }

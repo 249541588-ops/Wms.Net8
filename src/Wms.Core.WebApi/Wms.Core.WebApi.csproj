@@ -55,6 +55,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Wms.Core.Application\Wms.Core.Application.csproj" />
     <ProjectReference Include="..\Wms.Core.Domain\Wms.Core.Domain.csproj" />
+    <ProjectReference Include="..\Wms.Core.Engine\Wms.Core.Engine.csproj" />
     <ProjectReference Include="..\Wms.Core.Infrastructure\Wms.Core.Infrastructure.csproj" />
   </ItemGroup>
 

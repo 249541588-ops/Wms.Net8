@@ -63,12 +63,19 @@ public class DbInitializer
             // 确保已有数据库的 FlowNodes 表包含 IsDeleted 列
             await EnsureFlowNodeIsDeletedColumnAsync();
 
+            // 确保工艺路线模块 6 张表存在 + Unitloads 新增 5 列（已有数据库不会自动添加）
+            await EnsureProcessRouteTablesAsync();
+
             // 确保清理相关索引存在（已有数据库 EnsureCreatedAsync 不会添加新索引）
             await EnsureCleanupIndexesAsync();
 
             // 种子流程模板（每次启动都同步，确保内置模板节点正确）
             await FlowTemplateSeeder.SeedAsync(_db, _logger);
             _logger.LogInformation("流程模板种子数据同步完成");
+
+            // 种子工艺路线（幂等：按 Code 判断是否已存在）
+            await ProcessRouteSeeder.SeedAsync(_db, _logger);
+            _logger.LogInformation("工艺路线种子数据同步完成");
 
             // 种子预置报表配置（幂等：按 ReportCode 判断是否已存在）
             await ReportConfigSeeder.SeedAsync(_db, _logger);
@@ -306,6 +313,167 @@ public class DbInitializer
             """;
 
         await _db.Database.ExecuteSqlRawAsync(sql);
+    }
+
+    /// <summary>
+    /// 确保工艺路线模块 6 张表存在 + Unitloads 新增 5 列（已有数据库 EnsureCreatedAsync 不会添加新表/列）
+    /// </summary>
+    private async Task EnsureProcessRouteTablesAsync()
+    {
+        // 1. Unitloads 表新增 5 列
+        var alterSql = """
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Unitloads' AND COLUMN_NAME = 'ProcessRouteId')
+                ALTER TABLE Unitloads ADD ProcessRouteId INT NULL;
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Unitloads' AND COLUMN_NAME = 'ProcessRouteVersionId')
+                ALTER TABLE Unitloads ADD ProcessRouteVersionId INT NULL;
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Unitloads' AND COLUMN_NAME = 'CurrentStepId')
+                ALTER TABLE Unitloads ADD CurrentStepId INT NULL;
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Unitloads' AND COLUMN_NAME = 'NextStepId')
+                ALTER TABLE Unitloads ADD NextStepId INT NULL;
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Unitloads' AND COLUMN_NAME = 'IsAwaitingBranchSelection')
+                ALTER TABLE Unitloads ADD IsAwaitingBranchSelection BIT NULL DEFAULT 0;
+
+            -- ArchivedUnitloads 表补充路线字段
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ArchivedUnitloads' AND COLUMN_NAME = 'ProcessRouteId')
+                ALTER TABLE ArchivedUnitloads ADD ProcessRouteId INT NULL;
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ArchivedUnitloads' AND COLUMN_NAME = 'ProcessRouteVersionId')
+                ALTER TABLE ArchivedUnitloads ADD ProcessRouteVersionId INT NULL;
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ArchivedUnitloads' AND COLUMN_NAME = 'CurrentStepId')
+                ALTER TABLE ArchivedUnitloads ADD CurrentStepId INT NULL;
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ArchivedUnitloads' AND COLUMN_NAME = 'NextStepId')
+                ALTER TABLE ArchivedUnitloads ADD NextStepId INT NULL;
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ArchivedUnitloads' AND COLUMN_NAME = 'IsAwaitingBranchSelection')
+                ALTER TABLE ArchivedUnitloads ADD IsAwaitingBranchSelection BIT NULL DEFAULT 0;
+            """;
+        await _db.Database.ExecuteSqlRawAsync(alterSql);
+
+        // 2. 创建 6 张新表
+        var createSql = """
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'ProcessRoutes')
+            BEGIN
+                CREATE TABLE ProcessRoutes (
+                    ProcessRouteId INT IDENTITY(1,1) PRIMARY KEY,
+                    Code NVARCHAR(100) NOT NULL,
+                    Name NVARCHAR(200) NOT NULL,
+                    Description NVARCHAR(500) NULL,
+                    CurrentVersion INT NOT NULL DEFAULT 1,
+                    IsActive BIT NOT NULL DEFAULT 1,
+                    IsBuiltIn BIT NOT NULL DEFAULT 0,
+                    SortOrder INT NOT NULL DEFAULT 0,
+                    Priority INT NOT NULL DEFAULT 0,
+                    CreatedTime DATETIME2 NULL,
+                    ModifiedTime DATETIME2 NULL,
+                    CreatedBy NVARCHAR(64) NULL,
+                    ModifiedBy NVARCHAR(64) NULL,
+                    CONSTRAINT UQ_ProcessRoutes_Code UNIQUE (Code)
+                );
+            END
+
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'ProcessRouteVersions')
+            BEGIN
+                CREATE TABLE ProcessRouteVersions (
+                    Id INT IDENTITY(1,1) PRIMARY KEY,
+                    ProcessRouteId INT NOT NULL,
+                    Version INT NOT NULL,
+                    Status NVARCHAR(20) NOT NULL DEFAULT 'Draft',
+                    ChangeLog NVARCHAR(500) NULL,
+                    PublishedTime DATETIME2 NULL,
+                    PublishedBy NVARCHAR(64) NULL,
+                    CreatedTime DATETIME2 NULL,
+                    ModifiedTime DATETIME2 NULL,
+                    CreatedBy NVARCHAR(64) NULL,
+                    ModifiedBy NVARCHAR(64) NULL,
+                    CONSTRAINT FK_ProcessRouteVersions_ProcessRoutes FOREIGN KEY (ProcessRouteId) REFERENCES ProcessRoutes(ProcessRouteId) ON DELETE CASCADE,
+                    CONSTRAINT UQ_ProcessRouteVersions_RouteId_Version UNIQUE (ProcessRouteId, Version)
+                );
+            END
+
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'ProcessRouteSteps')
+            BEGIN
+                CREATE TABLE ProcessRouteSteps (
+                    Id INT IDENTITY(1,1) PRIMARY KEY,
+                    VersionId INT NOT NULL,
+                    OperationCode NVARCHAR(50) NOT NULL,
+                    DisplayName NVARCHAR(100) NOT NULL,
+                    StepType NVARCHAR(20) NOT NULL DEFAULT 'Normal',
+                    IsStart BIT NOT NULL DEFAULT 0,
+                    IsEnd BIT NOT NULL DEFAULT 0,
+                    SortOrder INT NOT NULL DEFAULT 0,
+                    Description NVARCHAR(500) NULL,
+                    CreatedTime DATETIME2 NULL,
+                    ModifiedTime DATETIME2 NULL,
+                    CreatedBy NVARCHAR(64) NULL,
+                    ModifiedBy NVARCHAR(64) NULL,
+                    CONSTRAINT FK_ProcessRouteSteps_Versions FOREIGN KEY (VersionId) REFERENCES ProcessRouteVersions(Id) ON DELETE CASCADE
+                );
+                CREATE NONCLUSTERED INDEX IX_ProcessRouteSteps_VersionId ON ProcessRouteSteps(VersionId);
+            END
+
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'ProcessRouteTransitions')
+            BEGIN
+                CREATE TABLE ProcessRouteTransitions (
+                    Id INT IDENTITY(1,1) PRIMARY KEY,
+                    VersionId INT NOT NULL,
+                    FromStepId INT NOT NULL,
+                    ToStepId INT NOT NULL,
+                    TransitionType NVARCHAR(20) NOT NULL DEFAULT 'Sequential',
+                    Label NVARCHAR(100) NULL,
+                    IsDefault BIT NOT NULL DEFAULT 0,
+                    SortOrder INT NOT NULL DEFAULT 0,
+                    CreatedTime DATETIME2 NULL,
+                    ModifiedTime DATETIME2 NULL,
+                    CreatedBy NVARCHAR(64) NULL,
+                    ModifiedBy NVARCHAR(64) NULL,
+                    CONSTRAINT FK_ProcessRouteTransitions_Versions FOREIGN KEY (VersionId) REFERENCES ProcessRouteVersions(Id) ON DELETE CASCADE,
+                    CONSTRAINT FK_ProcessRouteTransitions_FromStep FOREIGN KEY (FromStepId) REFERENCES ProcessRouteSteps(Id) ON DELETE NO ACTION,
+                    CONSTRAINT FK_ProcessRouteTransitions_ToStep FOREIGN KEY (ToStepId) REFERENCES ProcessRouteSteps(Id) ON DELETE NO ACTION
+                );
+                CREATE NONCLUSTERED INDEX IX_ProcessRouteTransitions_VersionId_FromStepId_ToStepId ON ProcessRouteTransitions(VersionId, FromStepId, ToStepId);
+            END
+
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'ProcessRouteMaterialBindings')
+            BEGIN
+                CREATE TABLE ProcessRouteMaterialBindings (
+                    Id INT IDENTITY(1,1) PRIMARY KEY,
+                    ProcessRouteId INT NOT NULL,
+                    MaterialId INT NOT NULL,
+                    Priority INT NOT NULL DEFAULT 0,
+                    IsActive BIT NOT NULL DEFAULT 1,
+                    CreatedTime DATETIME2 NULL,
+                    ModifiedTime DATETIME2 NULL,
+                    CreatedBy NVARCHAR(64) NULL,
+                    ModifiedBy NVARCHAR(64) NULL,
+                    CONSTRAINT FK_ProcessRouteMaterialBindings_ProcessRoutes FOREIGN KEY (ProcessRouteId) REFERENCES ProcessRoutes(ProcessRouteId) ON DELETE CASCADE,
+                    CONSTRAINT FK_ProcessRouteMaterialBindings_Materials FOREIGN KEY (MaterialId) REFERENCES Materials(MaterialId) ON DELETE NO ACTION,
+                    CONSTRAINT UQ_ProcessRouteMaterialBindings_RouteId_MaterialId UNIQUE (ProcessRouteId, MaterialId)
+                );
+            END
+
+            IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'UnitloadProcessRouteLogs')
+            BEGIN
+                CREATE TABLE UnitloadProcessRouteLogs (
+                    Id INT IDENTITY(1,1) PRIMARY KEY,
+                    UnitloadId INT NOT NULL,
+                    VersionId INT NULL,
+                    StepId INT NULL,
+                    OperationCode NVARCHAR(50) NULL,
+                    ActionType NVARCHAR(20) NOT NULL DEFAULT 'Enter',
+                    FromOperation NVARCHAR(50) NULL,
+                    ToOperation NVARCHAR(50) NULL,
+                    SelectedTransitionId INT NULL,
+                    Operator NVARCHAR(64) NULL,
+                    Remark NVARCHAR(500) NULL,
+                    CreatedTime DATETIME2 NULL,
+                    ModifiedTime DATETIME2 NULL,
+                    CreatedBy NVARCHAR(64) NULL,
+                    ModifiedBy NVARCHAR(64) NULL
+                );
+                CREATE NONCLUSTERED INDEX IX_UnitloadProcessRouteLogs_UnitloadId ON UnitloadProcessRouteLogs(UnitloadId);
+                CREATE NONCLUSTERED INDEX IX_UnitloadProcessRouteLogs_VersionId ON UnitloadProcessRouteLogs(VersionId);
+            END
+            """;
+        await _db.Database.ExecuteSqlRawAsync(createSql);
+        _logger.LogInformation("工艺路线模块表检查/创建完成");
     }
 
     /// <summary>

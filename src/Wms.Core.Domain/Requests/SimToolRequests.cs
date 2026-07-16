@@ -38,6 +38,7 @@ public class SimCreateUnitloadRequest
 {
     public string ContainerCode { get; set; } = string.Empty;
     public string CurrentOperation { get; set; } = string.Empty;
+    public int MaterialId { get; set; }
     public int OperationNumber { get; set; } = 1;
     public int IsAdvance { get; set; } = 0;
     public int BatteryCount { get; set; } = 0;

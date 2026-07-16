@@ -5,7 +5,6 @@ using Wms.Core.Domain.Constants;
 using Wms.Core.Domain.Entities.Container;
 using Wms.Core.Domain.Enums;
 using Wms.Core.Engine;
-using Wms.Core.Infrastructure.Persistence;
 using Wms.Core.Application.Persistence;
 
 namespace Wms.Core.Engine.Nodes;

@@ -168,6 +168,31 @@ public class ArchivedUnitload : IEntity<int>
     /// </summary>
     public virtual int IsToHangke { get; set; }
 
+    /// <summary>
+    /// 绑定的工艺路线ID
+    /// </summary>
+    public virtual int? ProcessRouteId { get; set; }
+
+    /// <summary>
+    /// 锁定的工艺路线版本ID
+    /// </summary>
+    public virtual int? ProcessRouteVersionId { get; set; }
+
+    /// <summary>
+    /// 当前步骤ID
+    /// </summary>
+    public virtual int? CurrentStepId { get; set; }
+
+    /// <summary>
+    /// 下一步骤ID
+    /// </summary>
+    public virtual int? NextStepId { get; set; }
+
+    /// <summary>
+    /// 是否等待分支选择
+    /// </summary>
+    public virtual bool? IsAwaitingBranchSelection { get; set; }
+
     #region IEntity 成员
 
     /// <summary>

@@ -91,6 +91,11 @@ public static class Cst
     public const string 档位验证 = "档位验证";
 
     /// <summary>
+    /// 任务类型：托盘类型验证
+    /// </summary>
+    public const string 托盘类型验证 = "托盘类型验证";
+
+    /// <summary>
     /// 位置来源：起始位置（请求阶段）
     /// </summary>
     public const string LocationStart = "start";
@@ -109,4 +114,15 @@ public static class Cst
     /// 流程阶段：完成阶段
     /// </summary>
     public const string PhaseCompletion = "Completion";
+
+    /// <summary>
+    /// 字典分类编码：托盘类型验证 - 工序结果码映射
+    /// 父级字典 No，子项 Name=工序名，Value=返回的 resultcode
+    /// </summary>
+    public const string 托盘类型验证映射 = "VERFIYPALLETTYPE_MAP";
+
+    /// <summary>
+    /// 字典特殊键：托盘类型验证 - 托盘不存在时的返回码（VERFIYPALLETTYPE_MAP 下的子项 No）
+    /// </summary>
+    public const string 托盘类型验证_NOT_EXIST = "NOT_EXIST";
 }

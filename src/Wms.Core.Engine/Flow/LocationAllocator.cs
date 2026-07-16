@@ -10,7 +10,6 @@ using Wms.Core.Domain.Entities.StockFlow;
 using Wms.Core.Domain.Entities.Transport;
 using Wms.Core.Domain.Entities.Warehouse;
 using Wms.Core.Domain.Tasks;
-using Wms.Core.Infrastructure.Persistence;
 using Wms.Core.Application.Persistence;
 
 namespace Wms.Core.Infrastructure.Handlers.WcsRequest;
@@ -363,7 +362,12 @@ public class LocationAllocator
             IsUpload = unitload.IsUpload,
             IsAdvance = unitload.IsAdvance,
             IsSupplement = unitload.IsSupplement,
-            IsToHangke = unitload.IsToHangke
+            IsToHangke = unitload.IsToHangke,
+            ProcessRouteId = unitload.ProcessRouteId,
+            ProcessRouteVersionId = unitload.ProcessRouteVersionId,
+            CurrentStepId = unitload.CurrentStepId,
+            NextStepId = unitload.NextStepId,
+            IsAwaitingBranchSelection = unitload.IsAwaitingBranchSelection
         };
         db.ArchivedUnitloads.Add(archivedUnitload);
         db.SaveChanges();
@@ -481,7 +485,12 @@ public class LocationAllocator
             IsUpload = unitload.IsUpload,
             IsAdvance = unitload.IsAdvance,
             IsSupplement = unitload.IsSupplement,
-            IsToHangke = unitload.IsToHangke
+            IsToHangke = unitload.IsToHangke,
+            ProcessRouteId = unitload.ProcessRouteId,
+            ProcessRouteVersionId = unitload.ProcessRouteVersionId,
+            CurrentStepId = unitload.CurrentStepId,
+            NextStepId = unitload.NextStepId,
+            IsAwaitingBranchSelection = unitload.IsAwaitingBranchSelection
         };
         db.ArchivedUnitloads.Add(archivedUnitload);
         await db.SaveChangesAsync();
@@ -598,7 +607,12 @@ public class LocationAllocator
             IsUpload = unitload.IsUpload,
             IsAdvance = unitload.IsAdvance,
             IsSupplement = unitload.IsSupplement,
-            IsToHangke = unitload.IsToHangke
+            IsToHangke = unitload.IsToHangke,
+            ProcessRouteId = unitload.ProcessRouteId,
+            ProcessRouteVersionId = unitload.ProcessRouteVersionId,
+            CurrentStepId = unitload.CurrentStepId,
+            NextStepId = unitload.NextStepId,
+            IsAwaitingBranchSelection = unitload.IsAwaitingBranchSelection
         };
         db.ArchivedUnitloads.Add(archivedUnitload);
         await db.SaveChangesAsync();
@@ -806,6 +820,11 @@ public class LocationAllocator
                 IsAdvance = unitload.IsAdvance,
                 IsSupplement = unitload.IsSupplement,
                 IsToHangke = unitload.IsToHangke,
+                ProcessRouteId = unitload.ProcessRouteId,
+                ProcessRouteVersionId = unitload.ProcessRouteVersionId,
+                CurrentStepId = unitload.CurrentStepId,
+                NextStepId = unitload.NextStepId,
+                IsAwaitingBranchSelection = unitload.IsAwaitingBranchSelection,
                 CreatedTime = now,
                 ModifiedTime = now
             };

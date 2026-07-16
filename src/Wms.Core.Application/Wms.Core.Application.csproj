@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Wms.Core.Domain\Wms.Core.Domain.csproj" />
+    <ProjectReference Include="..\Wms.Core.Application.Contracts\Wms.Core.Application.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

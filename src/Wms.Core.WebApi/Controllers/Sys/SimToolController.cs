@@ -26,17 +26,20 @@ public class SimToolController : ControllerBase
     private readonly WmsDbContext _db;
     private readonly IUnitloadService _unitloadService;
     private readonly IBasicDictionaryService _dictService;
+    private readonly IProcessRouteService _processRouteService;
     private readonly ILogger<SimToolController> _logger;
 
     public SimToolController(
         WmsDbContext db,
         IUnitloadService unitloadService,
         IBasicDictionaryService dictService,
+        IProcessRouteService processRouteService,
         ILogger<SimToolController> logger)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _unitloadService = unitloadService ?? throw new ArgumentNullException(nameof(unitloadService));
         _dictService = dictService ?? throw new ArgumentNullException(nameof(dictService));
+        _processRouteService = processRouteService ?? throw new ArgumentNullException(nameof(processRouteService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -74,7 +77,23 @@ public class SimToolController : ControllerBase
                 $"SIM修改工艺: {request.CurrentOperation ?? unitload.CurrentOperation}/{request.OperationNumber ?? unitload.OperationNumber}/{request.IsAdvance ?? unitload.IsAdvance}");
 
             await _db.SaveChangesAsync();
-            return Result.Success("修改工艺信息成功");
+
+            // 如果托盘已绑定路线，重新定位步骤
+            if (unitload.ProcessRouteVersionId.HasValue)
+            {
+                var firstItem = await _db.Set<UnitloadItem>().FirstOrDefaultAsync(ui => ui.UnitloadId == unitload.UnitloadId);
+                if (firstItem?.MaterialId != null)
+                {
+                    await _processRouteService.BindRouteAsync(unitload, firstItem.MaterialId.Value);
+                    await _db.SaveChangesAsync();
+                }
+            }
+
+            // 构建包含路线关联信息的返回消息
+            var routeMsg = unitload.ProcessRouteVersionId.HasValue
+                ? $"，路线已更新：当前={unitload.CurrentOperation}，下一步={unitload.NextOperation ?? "无"}"
+                : "";
+            return Result.Success($"修改工艺信息成功{routeMsg}");
         }
         catch (Exception ex)
         {
@@ -225,17 +244,14 @@ public class SimToolController : ControllerBase
             if (string.IsNullOrEmpty(request.CurrentOperation))
                 return Result.Fail("当前工艺不能为空");
 
-            // 从 PRODUCTIONMATERIAL 字典获取物料配置
-            var productionMaterialParents = _dictService.GetItemsByNo("PRODUCTIONMATERIAL");
-            var materialDict = productionMaterialParents.FirstOrDefault(x => x.Name == request.CurrentOperation);
-            if (materialDict == null)
-                return Result.Fail($"未找到工艺 {request.CurrentOperation} 对应的物料配置");
+            if (request.MaterialId <= 0)
+                return Result.Fail("请选择物料");
 
-            // 从字典配置获取物料
+            // 按前端传入的 MaterialId 直查物料表
             var material = await _db.Set<Domain.Entities.Material.Materials>()
-                .FirstOrDefaultAsync(m => m.MaterialCode == materialDict.Value);
+                .FirstOrDefaultAsync(m => m.MaterialId == request.MaterialId);
             if (material == null)
-                return Result.Fail($"物料编码 {materialDict.Value} 不存在");
+                return Result.Fail($"物料ID {request.MaterialId} 不存在");
 
             // 默认位置
             var noneLocation = await _db.Locations.FirstOrDefaultAsync(l => l.LocationCode == Cst.None);
@@ -267,6 +283,9 @@ public class SimToolController : ControllerBase
             unitload.NextOperation = _unitloadService.GetNextOperation(request.CurrentOperation);
             _db.Unitloads.Add(unitload);
             await _db.SaveChangesAsync();
+
+            // 创建托盘时绑定工艺路线
+            await _processRouteService.BindRouteAsync(unitload, material.MaterialId);
 
             // 创建 UnitloadItem
             var unitloadItem = new UnitloadItem

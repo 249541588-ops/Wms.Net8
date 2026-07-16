@@ -1,6 +1,7 @@
 using Polly;
 using Wms.Core.Application.Ports;
 using Wms.Core.Domain.Tasks;
+using Wms.Core.Engine;
 using Wms.Core.Infrastructure.Clients;
 using Wms.Core.Infrastructure.Persistence;
 using Wms.Core.Infrastructure.Tasks.Rules;
@@ -19,6 +20,9 @@ public static class WcsExtensions
     /// </summary>
     public static IServiceCollection AddWcsServices(this IServiceCollection services, IConfiguration configuration)
     {
+        // 注册 Engine（流程引擎、节点处理器、库位分配器、通用规则）+ 客户特定规则
+        services.AddWmsEngine(opt => opt.AddLocationRule<SSRule04HcLx>());
+
         // 注册 WCS 通信服务
         // ctask 数据库访问（Dapper，独立连接）
         services.AddScoped<ICtaskDbService, CtaskDbService>();
@@ -37,8 +41,7 @@ public static class WcsExtensions
         // WCS 任务同步服务
         services.AddScoped<WcsTaskSyncService>();
 
-        // WCS 请求处理器（策略模式）
-        services.AddScoped<WcsReqHandlers.LocationAllocator>();
+        // WCS 请求处理器（策略模式）— LocationAllocator 已由 AddWmsEngine 注册
         services.AddScoped<WcsReqHandler, WcsReqHandlers.InboundRequestHandler>();
         services.AddScoped<WcsReqHandler, WcsReqHandlers.InboundEmptyRequestHandler>();
         services.AddScoped<WcsReqHandler, WcsReqHandlers.InboundDoubleRequestHandler>();
@@ -50,29 +53,15 @@ public static class WcsExtensions
         services.AddScoped<WcsReqHandler, WcsReqHandlers.VerfiyLevelRequestHandler>();
         services.AddScoped<WcsReqHandler, WcsReqHandlers.VerfiyProcessRequestHandler>();
         services.AddScoped<WcsReqHandler, WcsReqHandlers.StackingPalletRequestHandler>();
+        services.AddScoped<WcsReqHandler, WcsReqHandlers.VerfiyPalletTypeRequestHandler>();
 
         // 任务完成处理器（策略模式）
         services.AddScoped<ITaskCompletionHandler, TskCompHandlers.InboundCompletionHandler>();
         services.AddScoped<ITaskCompletionHandler, TskCompHandlers.OutboundCompletionHandler>();
         services.AddScoped<ITaskCompletionHandler, TskCompHandlers.MoveCompletionHandler>();
 
-        // 注册库位分配规则（15 条规则 + 策略引擎）
-        services.AddSingleton<ILocationAllocationRule, SSRule01>();
-        services.AddSingleton<ILocationAllocationRule, SSRule02>();
-        services.AddSingleton<ILocationAllocationRule, SSRule03>();
-        services.AddSingleton<ILocationAllocationRule, SSRule04>();
-        services.AddSingleton<ILocationAllocationRule, SSRule04HcLx>();
-        services.AddSingleton<ILocationAllocationRule, SSRule05>();
-        services.AddSingleton<ILocationAllocationRule, SSRule06>();
-        services.AddSingleton<ILocationAllocationRule, SSRule07>();
-        services.AddSingleton<ILocationAllocationRule, SSRule08>();
-        services.AddSingleton<ILocationAllocationRule, SSRule09>();
-        services.AddSingleton<ILocationAllocationRule, SSRule10>();
-        services.AddSingleton<ILocationAllocationRule, SDRule01>();
-        services.AddSingleton<ILocationAllocationRule, SDRule02>();
-        services.AddSingleton<ILocationAllocationRule, SDRule03>();
-        services.AddSingleton<ILocationAllocationRule, SDRule04>();
-        services.AddScoped<LocationAllocationEngine>();
+        // 库位分配规则（14 条通用 + 1 条客户特定 SSRule04HcLx）+ LocationAllocationEngine
+        // 已由 AddWmsEngine 注册（见方法开头）
 
         return services;
     }

@@ -11,8 +11,6 @@ using Wms.Core.Domain.Entities.Flow;
 using Wms.Core.Infrastructure.Persistence;
 using Wms.Core.Infrastructure.Persistence.Repositories;
 using Wms.Core.Infrastructure.Services;
-using Wms.Core.Engine;
-using Wms.Core.Engine.Nodes;
 
 namespace Wms.Core.Infrastructure.DependencyInjection;
 
@@ -64,6 +62,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPortService, PortService>();
         services.AddScoped<ILocationService, LocationService>();
         services.AddScoped<IUnitloadService, UnitloadService>();
+        services.AddScoped<IProcessRouteService, ProcessRouteService>();
 
         services.AddScoped<IBasicDictionaryService, BasicDictionaryService>();
         services.AddScoped<IAuthService, AuthService>();
@@ -81,35 +80,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
         services.AddHostedService<BackgroundTaskQueueHostedService>();
 
-        // 注册流程引擎（Scoped - 每个请求一个实例）
-        services.AddScoped<IFlowEngine, FlowEngineService>();
-
-        // 注册所有节点处理器
-        services.AddScoped<INodeHandler, ValidateParamsHandler>();
-        services.AddScoped<INodeHandler, FindUnitloadHandler>();
-        services.AddScoped<INodeHandler, CheckUnitloadStatusHandler>();
-        services.AddScoped<INodeHandler, MatchTagHandler>();
-        services.AddScoped<INodeHandler, AllocateLocationHandler>();
-        services.AddScoped<INodeHandler, CheckLocationLimitHandler>();
-        services.AddScoped<INodeHandler, CreateTransTaskHandler>();
-        services.AddScoped<INodeHandler, SendWcsTaskHandler>();
-        services.AddScoped<INodeHandler, UpdateUnitloadHandler>();
-        services.AddScoped<INodeHandler, UpdateLocationCountHandler>();
-        services.AddScoped<INodeHandler, RecordFlowHandler>();
-        services.AddScoped<INodeHandler, ArchiveTaskHandler>();
-        services.AddScoped<INodeHandler, SplitUnitloadHandler>();
-        services.AddScoped<INodeHandler, AdvanceOperationHandler>();
-        services.AddScoped<INodeHandler, HttpCallbackHandler>();
-        services.AddScoped<INodeHandler, ProcessTagVerificationHandler>();
-        services.AddScoped<INodeHandler, VerifyWasteBatchHandler>();
-        services.AddScoped<INodeHandler, VerifyLevelHandler>();
-        services.AddScoped<INodeHandler, VerifyProcessStepsHandler>();
-        services.AddScoped<INodeHandler, UploadMesHandler>();
-        services.AddScoped<INodeHandler, NotifyHangKeHandler>();
-        services.AddScoped<INodeHandler, MergeUnitloadsHandler>();
-        services.AddScoped<INodeHandler, WasteDisposalRequestNode>();
-        services.AddScoped<INodeHandler, WasteDisposalCaptureNode>();
-        services.AddScoped<INodeHandler, CleanupEmptyTrayHandler>();
+        // FlowEngine、节点处理器、库位分配规则已迁移到 Wms.Core.Engine 项目
+        // 注册方式：services.AddWmsEngine(opt => opt.AddLocationRule<SSRule04HcLx>())
+        // 调用点：WebApi 启动代码（Program.cs / WcsExtensions.AddWcsServices）
 
         return services;
     }

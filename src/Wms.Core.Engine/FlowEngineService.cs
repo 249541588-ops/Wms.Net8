@@ -9,10 +9,10 @@ using Wms.Core.Domain.Common;
 using Wms.Core.Domain.Enums;
 using Wms.Core.Domain.Utilities.Response;
 using Wms.Core.Engine;
-using Wms.Core.Infrastructure.Persistence;
+using Wms.Core.Application.Persistence;
 using Wms.Core.Application.Ports;
 
-namespace Wms.Core.Infrastructure.Services;
+namespace Wms.Core.Engine;
 
 /// <summary>
 /// 流程引擎实现 — 条件匹配器 + Pipeline 执行器 + 模板缓存
@@ -21,7 +21,7 @@ public class FlowEngineService : IFlowEngine
 {
     private record CompletionLogData(int InstanceId, string Status, DateTime CompletedTime, string? ErrorMsg, List<FlowNodeLog> Logs);
 
-    private readonly WmsDbContext _db;
+    private readonly IFlowDbContext _db;
     private readonly IDictionary<string, INodeHandler> _handlers;
     private readonly IMemoryCache _cache;
     private readonly ILogger<FlowEngineService> _logger;
@@ -39,7 +39,7 @@ public class FlowEngineService : IFlowEngine
     private static int _cacheVersion = 0;
 
     public FlowEngineService(
-        WmsDbContext db,
+        IFlowDbContext db,
         IEnumerable<INodeHandler> handlers,
         IMemoryCache cache,
         ILogger<FlowEngineService> logger,
@@ -472,7 +472,7 @@ public class FlowEngineService : IFlowEngine
         try
         {
             using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<WmsDbContext>();
+            var db = scope.ServiceProvider.GetRequiredService<IFlowDbContext>();
 
             // 更新实例最终状态
             var instance = await db.FlowInstances.FindAsync(instanceId);
