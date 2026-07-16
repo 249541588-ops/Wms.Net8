@@ -29,4 +29,28 @@
     <ProjectReference Include="..\..\src\Wms.Core.Infrastructure\Wms.Core.Infrastructure.csproj" />
   </ItemGroup>
 
+  <!-- 底层平台 DLL 引用（与 Infrastructure/WebApi 一致；Reference 不通过 ProjectReference 传递编译引用列表） -->
+  <ItemGroup>
+    <Reference Include="Wms.Core.Domain.Shared">
+      <HintPath>..\..\lib\platform\Wms.Core.Domain.Shared.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Wms.Core.Domain">
+      <HintPath>..\..\lib\platform\Wms.Core.Domain.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Wms.Core.Application.Contracts">
+      <HintPath>..\..\lib\platform\Wms.Core.Application.Contracts.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Wms.Core.Application">
+      <HintPath>..\..\lib\platform\Wms.Core.Application.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Wms.Core.Engine">
+      <HintPath>..\..\lib\platform\Wms.Core.Engine.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
 </Project>
