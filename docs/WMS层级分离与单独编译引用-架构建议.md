@@ -11,7 +11,7 @@ Wms.Core 是一个 WMS 仓储管理系统，后端 `Wms.Net8`（.NET 8 / Clean A
 1. **后端 4 层**：Domain / Application / Infrastructure / WebApi，依赖方向 `WebApi → Infrastructure → Application → Domain`
 2. **Infrastructure 内已存在 `Wms.Core.Engine` 命名空间**（[ServiceCollectionExtensions.cs:12-13](../src/Wms.Core.Infrastructure/DependencyInjection/ServiceCollectionExtensions.cs#L12-L13) `using Wms.Core.Engine;`），说明团队早有引擎分离意图，只差没拆项目
 3. **DI 注册已模块化**：[Program.cs:88-100](../src/Wms.Core.WebApi/Program.cs#L88-L100) 已用 11 个 `Add*` 扩展方法编排，拆分骨架已成
-4. **26 个节点处理器手写注册**（[ServiceCollectionExtensions.cs:77-101](../src/Wms.Core.Infrastructure/DependencyInjection/ServiceCollectionExtensions.cs#L77-L101)），拆分时可改为程序集扫描自动注册
+4. **25 个节点处理器手写注册**（[ServiceCollectionExtensions.cs:89-113](../src/Wms.Core.Infrastructure/DependencyInjection/ServiceCollectionExtensions.cs#L89-L113)；Phase 0 时 22 个 + 2026-07 工艺路线相关 3 个：AdvanceOperation / ProcessTagVerification / VerifyProcessSteps），拆分时可改为程序集扫描自动注册
 5. **三库物理分离已落地**：WmsDb（主库 60+ DbSet）/ WmsLogsDb（日志）/ ctask（WCS 任务，Dapper）
 6. **Ports 模式已落地**：21 个端口接口在 Application，实现在 Infrastructure
 7. **[Result.cs](../src/Wms.Core.Domain/Common/Result.cs) 是纯 POCO**，迁移到共享内核零风险
@@ -55,7 +55,7 @@ Wms.Net8/src/
 ├── Wms.Core.Domain.Shared/        ← 共享内核：Result/Enums/Constants/IAuditable
 │   └── (无项目引用，最底层)
 │
-├── Wms.Core.Engine/               ← 流程引擎：IFlowEngine + 26 节点处理器
+├── Wms.Core.Engine/               ← 流程引擎：IFlowEngine + 25 节点处理器（Phase 0 时 22 + 工艺路线 3）
 │   └── 引用 Application.Contracts + Domain + Shared
 │
 ├── Wms.Core.WcsGateway/           ← WCS/MES/HangKe 通信网关（按需拆）
@@ -140,21 +140,21 @@ Wms.Core.Engine    Wms.Core.WcsGateway
 - 希望引擎代码与业务基础设施解耦，便于未来抽成产品
 
 **为什么这两个先拆**：
-- **Engine**：命名空间已是 `Wms.Core.Engine`（设计意图明确），26 节点处理器是独立闭环
+- **Engine**：命名空间已是 `Wms.Core.Engine`（设计意图明确），25 节点处理器（Phase 0 时 22 + 工艺路线 3）是独立闭环
 - **Logging**：已有独立 `WmsLogDbContext` + `WmsLogsDb` + `LogMigrations`，物理边界最清晰
 
 **Engine 拆分步骤**：
 
 1. 新建 `Wms.Core.Engine` 类库，引用 `Application` + `Domain` + `Shared`
 2. 迁移目录：
-   - `Infrastructure/Flow/` → `Engine/Flow/`（含 IFlowEngine / INodeHandler / FlowContext / Nodes/ 26 个处理器）
+   - `Infrastructure/Flow/` → `Engine/Flow/`（含 IFlowEngine / INodeHandler / FlowContext / Nodes/ 25 个处理器）
    - `Infrastructure/Services/FlowEngineService.cs` → `Engine/FlowEngineService.cs`
 3. 新建 `Engine/DependencyInjection/EngineExtensions.cs`，实现 `AddWmsEngine()`：
    ```csharp
    public static IServiceCollection AddWmsEngine(this IServiceCollection services)
    {
        services.AddScoped<IFlowEngine, FlowEngineService>();
-       // 程序集扫描自动注册所有 INodeHandler（替代手写 26 行）
+       // 程序集扫描自动注册所有 INodeHandler（替代手写 25 行）
        var assembly = typeof(EngineExtensions).Assembly;
        var handlerTypes = assembly.GetTypes()
            .Where(t => t is { IsClass: true, IsAbstract: false }
@@ -164,7 +164,7 @@ Wms.Core.Engine    Wms.Core.WcsGateway
        return services;
    }
    ```
-4. 从 [ServiceCollectionExtensions.cs:73-101](../src/Wms.Core.Infrastructure/DependencyInjection/ServiceCollectionExtensions.cs#L73-L101) 删除 Engine 相关注册（IFlowEngine + 26 个 INodeHandler）
+4. 从 [ServiceCollectionExtensions.cs:89-113](../src/Wms.Core.Infrastructure/DependencyInjection/ServiceCollectionExtensions.cs#L89-L113) 删除 Engine 相关注册（IFlowEngine + 25 个 INodeHandler）
 5. WebApi.csproj 添加 `<ProjectReference Include="..\Wms.Core.Engine\..." />`
 6. Program.cs 中 `builder.Services.AddWmsEngine();`
 
@@ -279,7 +279,7 @@ builder.Services.AddWmsCoreInfrastructure(builder.Configuration);
 
 // 底层子系统（独立项目）
 builder.Services.AddWmsLogging(builder.Configuration);   // 日志 DB
-builder.Services.AddWmsEngine();                         // 流程引擎 + 26 节点
+builder.Services.AddWmsEngine();                         // 流程引擎 + 25 节点
 builder.Services.AddWcsGateway(builder.Configuration);   // WCS 网关 + 规则（按需）
 builder.Services.AddWmsReporting();                      // 报表（按需）
 

@@ -2,6 +2,7 @@
 
 > **文档日期：** 2026-06-08
 > **适用项目：** Wms.Core (.NET 8 + EF Core + SQL Server + Vue 3)
+> **快照声明：** 本文档为初始设计快照（2026-06-08，规划 15 个节点类型 / 3 个 IWcsRequestHandler）。实际落地数为：Phase 0 时 22 个 NodeHandler（含 13 个 IWcsRequestHandler），2026-07 含工艺路线相关 3 个共 25 个 NodeHandler。**实际落地情况以 [WMS底层封装与平台-项目分离方案.md](WMS底层封装与平台-项目分离方案.md) 附录 B 为准。**
 
 ---
 
