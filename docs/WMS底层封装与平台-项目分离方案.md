@@ -1309,10 +1309,119 @@ Infrastructure → Reference Application.dll
 - ✓ **底层仓库建立**：wms-platform 本地目录已建（P2 本地模式）
 - ✓ **pack.ps1 + DLL 产出**：5 DLL + version.json 正确产出
 - ✓ **项目层 csproj 切换**：Infrastructure + WebApi 已切（主项目层）
-- ⏳ **sync-platform.ps1**：遗留步骤 ④
-- ⏳ **拆 sln + 权限隔离**：遗留步骤 ⑤
+- ✓ **sync-platform.ps1**：步骤 ④ 已完成（见 F.10）
+- ✓ **拆 sln**：步骤 ⑤ 已完成（见 F.10）；权限隔离待 wms-platform git 化
 
-附录 E 中标记为"推迟到 Phase 3 后"的 EF Core InMemory（让 4 个 skipped 测试可运行）继续推迟到 Phase 4 完全落地后。
+附录 E 中标记为"推迟到 Phase 3 后"的 EF Core InMemory（让 4 个 skipped 测试可运行）继续推迟到 Phase 4 硬分离完成后。
+
+### F.10 步骤 ④⑤ 执行记录（2026-07-16 续）
+
+#### 步骤 ④ sync-platform.ps1（commit 8115eb9）
+
+**实现要点**：
+- 适配 P2 决策（本地目录模式）：不走 git artifacts 分支，直接从 `../wms-platform/artifacts/` 复制
+- 版本比对：对比 version.json 的 `version` + `commit` + `buildTime` 三字段，全等才 skip
+- 清理策略：每次同步先删除 lib/platform/*.dll/*.pdb/*.xml，避免底层项目删除后旧 DLL 残留
+- 编码：UTF-8 with BOM + CRLF（Windows PowerShell 5.x 兼容）
+
+**验证两个场景**：
+1. 版本一致：输出 "Already up to date" 并 return
+2. 版本更新（人为改 buildTime 触发）：清理 5 旧 DLL → 复制 5 新 DLL → 更新 version.json
+
+**关键发现 R7**：PowerShell 5.x 读取 UTF-8 无 BOM 的 .ps1 时，按系统代码页（中文 Windows 是 GBK）解码，中文字符乱码导致语法解析异常。pack.ps1 同样含中文但未触发（中文行恰好不跨语法边界）。**通用规则**：PowerShell 5.x 脚本含非 ASCII 字符时，必须用 UTF-8 with BOM。
+
+**决策 P8**：sync-platform.ps1 用本地目录模式而非方案的 git artifacts 分支。理由：P2 决策 wms-platform 不建 git，git fetch/checkout 逻辑不适用。
+
+#### 步骤 ⑤ 拆 sln + 测试项目调整（commit 3174146）
+
+**操作清单**：
+1. `dotnet sln remove` 移除 5 个底层项目（Domain.Shared / Domain / Application.Contracts / Application / Engine）
+2. UnitTests.csproj：删除 `ProjectReference Domain`
+3. IntegrationTests.csproj：无需改动
+4. src/ 下 5 个底层项目源码**保留**（软分离，P10 决策）
+
+**UnitTests 类型冲突解决（R5 完结）**：
+
+附录 F.2 偏差 3 中提到的"测试项目未切换（遗留项）"在步骤 ⑤ 解决：
+
+**原状态**：UnitTests 同时 `ProjectReference Domain`（源码编译）+ `ProjectReference Infrastructure`（Infrastructure 传递 lib/platform/Domain.dll）→ 同一类型来自两个程序集 → CS0436。
+
+**修复**：删除 Domain ProjectReference，只保留 Infrastructure ProjectReference。Infrastructure 的 Reference HintPath 设了 `<Private>true</Private>`，5 个底层 DLL 会通过传递依赖到 UnitTests。
+
+**验证**：命令行编译 UnitTests，除 E-SafeNet CS2015（已知问题）外无 CS0436 或其他错误，273 warnings 全 XML 注释。
+
+**关键发现 R8**：sln 拆分本身**不引发任何编译问题**。原因：Infrastructure/WebApi 的 csproj 早已切换为 Reference HintPath（步骤 ③），不依赖 sln 内的 ProjectReference。sln 的 Project 条目只是"VS 中可见的项目列表"，不影响命令行 `dotnet build <csproj>` 的行为。
+
+**含义**：步骤 ⑤ "拆 sln" 本质是**IDE 视角的隔离**（开发者打开 sln 看不到底层项目），不是编译层面的改动。真正的物理隔离要靠"删除 src/ 下底层代码"（硬分离，待 wms-platform git 化后做）。
+
+#### 软分离 vs 硬分离（P10 决策）
+
+**决策 P10**：步骤 ⑤ 只做 sln 拆分，保留 src/ 下 5 个底层项目源码。
+
+| 维度 | 软分离（当前） | 硬分离（后续） |
+|------|---------------|---------------|
+| sln 包含底层项目 | 否 | 否 |
+| src/ 下有底层 .cs | **是** | 否 |
+| 文件系统能看到底层源码 | 能 | 不能 |
+| 满足"内部权限隔离" | 部分（仅 IDE 视角） | 完全 |
+| 回退容易度 | 高（恢复 sln + csproj） | 低（要恢复 src/ 全部代码） |
+| 前置条件 | 无 | wms-platform 必须有 git 仓库 |
+
+**硬分离前置条件**：wms-platform 建 git 仓库 + push 到 GitHub remote。否则删了 Wms.Net8/src/ 下底层代码后，底层只存在于本地目录（无版本控制备份）。
+
+**硬分离操作清单**（待 wms-platform git 化后执行）：
+1. 在 wms-platform 目录 `git init` + 关联 GitHub remote（如 `Wms.Platform`）
+2. push wms-platform 代码到新仓库
+3. 在 Wms.Net8 执行：
+   ```bash
+   git rm -r src/Wms.Core.Domain.Shared src/Wms.Core.Domain \
+              src/Wms.Core.Application.Contracts src/Wms.Core.Application \
+              src/Wms.Core.Engine
+   ```
+4. commit + push（Wms.Net8 仓库彻底无底层源码）
+5. 配置 GitHub 仓库权限（wms-platform 仅 1-2 人写权限，Wms.Net8 多人写权限）
+
+#### 步骤 ④⑤ Gate 检查
+
+| Gate | 预期 | 实际 | 状态 |
+|------|------|------|------|
+| sync 版本一致场景 | Already up to date | ✓ | ✓ |
+| sync 版本更新场景 | 5 DLL 同步 + version.json 更新 | ✓ | ✓ |
+| sync 后 lib/platform 内容 | buildTime 更新 | 10:00:00 | ✓ |
+| Infrastructure 编译（sln 拆后） | 0 errors | 0/0 | ✓ |
+| WebApi 编译（sln 拆后） | 0 errors | 0/133 | ✓ |
+| UnitTests 编译（删 Domain ref） | 仅 E-SafeNet CS2015 | ✓ | ✓ |
+| VS sln 完整编译 | 0 errors | 未验证 | ⏳ 需 VS |
+| VS UnitTests 运行 | 25 pass + 4 skipped | 未验证 | ⏳ 需 VS |
+
+#### 步骤 ④⑤ 关键决策补充
+
+| # | Decision | Status |
+|---|----------|--------|
+| P8 | sync-platform.ps1 本地目录模式（非 git artifacts 分支） | ✓ 已实施 |
+| P9 | sln 移除 5 个底层项目（IDE 视角隔离） | ✓ 已实施 |
+| P10 | src/ 下底层源码保留（软分离，待硬分离） | ✓ 用户确认 |
+
+#### Phase 4 最终状态
+
+**已完成**（5 个 commit）：
+- `938d413` Phase 1/2/3 + ProcessRoute 代码
+- `d0d4b9b` Phase 1/2/3 文档归档
+- `fe60ec5` Phase 4 步骤 ①②③（wms-platform + pack.ps1 + DLL 引用切换）
+- `8115eb9` Phase 4 步骤 ④（sync-platform.ps1）
+- `3174146` Phase 4 步骤 ⑤（sln 拆分 + UnitTests 调整）
+
+**软分离到位**：
+- 打开 Wms.Net8.sln 只看到 Infrastructure + WebApi + 2 测试项目
+- 底层 5 DLL 从 lib/platform/ 加载（由 sync-platform.ps1 从 wms-platform 同步）
+- 底层源码开发者在 wms-platform 目录维护（目前本地，未来独立 git 仓库）
+
+**待后续**：
+- 用户 VS 验证 sln 完整编译 + UnitTests 运行
+- wms-platform 建 git 仓库 + push 到 GitHub
+- 硬删除 Wms.Net8/src/ 下 5 个底层项目
+- GitHub repo 权限隔离配置
+- Wms.Core.Logging 抽取（独立技术债）
 
 ---
 
